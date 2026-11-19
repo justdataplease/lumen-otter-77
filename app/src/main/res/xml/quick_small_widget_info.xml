@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- "Quick bar, small" (2x1): Note and Camera. The same widget as the Quick bar at its narrowest. -->
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    android:description="@string/widget_quick_small_description"
+    android:initialLayout="@layout/glance_default_loading_layout"
+    android:previewLayout="@layout/quick_small_widget_preview"
+    android:previewImage="@drawable/quick_small_widget_preview_image"
+    android:minWidth="110dp"
+    android:minHeight="40dp"
+    android:minResizeWidth="110dp"
+    android:minResizeHeight="40dp"
+    android:resizeMode="horizontal"
+    android:targetCellWidth="2"
+    android:targetCellHeight="1"
+    android:updatePeriodMillis="3600000"
+    android:widgetCategory="home_screen" />

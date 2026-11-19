@@ -1,0 +1,1255 @@
+{
+ "v": 1,
+ "categories": [
+  {
+   "name": "Seasons & Events",
+   "subs": [
+    {
+     "name": "Spring",
+     "tags": [
+      "springbreak",
+      "springtravel",
+      "cherryblossom",
+      "wildflowers",
+      "easterholidays"
+     ]
+    },
+    {
+     "name": "Summer",
+     "tags": [
+      "summervibes",
+      "summerholidays",
+      "endlesssummer",
+      "summernights",
+      "heatwave"
+     ]
+    },
+    {
+     "name": "Autumn",
+     "tags": [
+      "autumnvibes",
+      "fallfoliage",
+      "leafpeeping",
+      "harvestseason",
+      "cozyseason"
+     ]
+    },
+    {
+     "name": "Winter",
+     "tags": [
+      "winterwonderland",
+      "snowday",
+      "winterescape",
+      "wintersun",
+      "firstsnow"
+     ]
+    },
+    {
+     "name": "Sky & Light",
+     "tags": [
+      "goldenhour",
+      "sunsetlovers",
+      "sunrise",
+      "rainydays",
+      "northernlights",
+      "stargazing"
+     ]
+    },
+    {
+     "name": "Timing",
+     "tags": [
+      "peakseason",
+      "shoulderseason",
+      "offseason",
+      "lastminute",
+      "earlybird"
+     ]
+    },
+    {
+     "name": "Winter Events",
+     "tags": [
+      "christmasmarkets",
+      "christmastrip",
+      "newyearseve",
+      "winterfestival"
+     ]
+    },
+    {
+     "name": "Spring Events",
+     "tags": [
+      "carnival",
+      "flowerfestival",
+      "springfestival",
+      "stpatricksday"
+     ]
+    },
+    {
+     "name": "Summer Events",
+     "tags": [
+      "musicfestival",
+      "festivallife",
+      "midsummer",
+      "openairfestival",
+      "pride"
+     ]
+    },
+    {
+     "name": "Autumn Events",
+     "tags": [
+      "oktoberfest",
+      "halloween",
+      "harvestfestival",
+      "wineharvest",
+      "thanksgiving"
+     ]
+    },
+    {
+     "name": "Local Festivals",
+     "tags": [
+      "localfestival",
+      "lanternfestival",
+      "foodfestival",
+      "filmfestival",
+      "streetparade"
+     ]
+    }
+   ]
+  },
+  {
+   "name": "Trip & Travellers",
+   "subs": [
+    {
+     "name": "Short Breaks",
+     "tags": [
+      "weekendgetaway",
+      "citybreak",
+      "daytrip",
+      "longweekend",
+      "staycation",
+      "microadventure"
+     ]
+    },
+    {
+     "name": "Romance",
+     "tags": [
+      "honeymoon",
+      "romanticgetaway",
+      "anniversarytrip",
+      "babymoon",
+      "proposal"
+     ]
+    },
+    {
+     "name": "Celebrations",
+     "tags": [
+      "birthdaytrip",
+      "destinationwedding",
+      "bachelorparty",
+      "bacheloretteparty",
+      "graduationtrip",
+      "reunion"
+     ]
+    },
+    {
+     "name": "Work & Study",
+     "tags": [
+      "businesstrip",
+      "workation",
+      "digitalnomad",
+      "bleisure",
+      "studyabroad",
+      "conference"
+     ]
+    },
+    {
+     "name": "Once in a Lifetime",
+     "tags": [
+      "bucketlist",
+      "gapyear",
+      "sabbatical",
+      "roundtheworld",
+      "pilgrimage",
+      "retirementtrip"
+     ]
+    },
+    {
+     "name": "Solo",
+     "tags": [
+      "solotravel",
+      "solofemaletravel",
+      "metime",
+      "travelalone"
+     ]
+    },
+    {
+     "name": "Couples",
+     "tags": [
+      "couplestravel",
+      "travelcouple",
+      "datenight",
+      "justthetwoofus"
+     ]
+    },
+    {
+     "name": "Family",
+     "tags": [
+      "familytravel",
+      "travelwithkids",
+      "familyvacation",
+      "babytravel",
+      "multigenerationaltravel"
+     ]
+    },
+    {
+     "name": "Friends & Groups",
+     "tags": [
+      "girlstrip",
+      "guystrip",
+      "friendstrip",
+      "grouptravel",
+      "squadgoals"
+     ]
+    },
+    {
+     "name": "Pets",
+     "tags": [
+      "travelwithdogs",
+      "dogfriendly",
+      "petfriendly",
+      "adventuredog"
+     ]
+    },
+    {
+     "name": "Budget",
+     "tags": [
+      "budgettravel",
+      "backpacking",
+      "hitchhiking",
+      "travelhacks",
+      "cheapflights"
+     ]
+    },
+    {
+     "name": "Luxury",
+     "tags": [
+      "luxurytravel",
+      "vipexperience",
+      "firstclass",
+      "fivestar",
+      "privatetour"
+     ]
+    },
+    {
+     "name": "Slow & Green",
+     "tags": [
+      "slowtravel",
+      "sustainabletravel",
+      "ecotourism",
+      "volunteering",
+      "offthebeatenpath"
+     ]
+    },
+    {
+     "name": "Adventure",
+     "tags": [
+      "adventuretravel",
+      "outdooradventure",
+      "expedition",
+      "overlanding",
+      "exploremore"
+     ]
+    },
+    {
+     "name": "Organised",
+     "tags": [
+      "guidedtour",
+      "packageholiday",
+      "grouptour",
+      "touristmode",
+      "thingstodo"
+     ]
+    }
+   ]
+  },
+  {
+   "name": "Stays & Transport",
+   "subs": [
+    {
+     "name": "Hotels & Resorts",
+     "tags": [
+      "hotellife",
+      "boutiquehotel",
+      "luxuryhotel",
+      "allinclusive",
+      "resortlife",
+      "beachresort"
+     ]
+    },
+    {
+     "name": "Homes & Rentals",
+     "tags": [
+      "vacationrental",
+      "holidayhome",
+      "villa",
+      "apartmentstay",
+      "homeawayfromhome"
+     ]
+    },
+    {
+     "name": "Budget & Social",
+     "tags": [
+      "hostellife",
+      "guesthouse",
+      "bedandbreakfast",
+      "homestay",
+      "capsulehotel"
+     ]
+    },
+    {
+     "name": "Outdoor Stays",
+     "tags": [
+      "camping",
+      "glamping",
+      "wildcamping",
+      "campsite",
+      "mountainhut"
+     ]
+    },
+    {
+     "name": "Unique Stays",
+     "tags": [
+      "treehouse",
+      "cabinlife",
+      "tinyhouse",
+      "houseboat",
+      "farmstay",
+      "castlestay"
+     ]
+    },
+    {
+     "name": "Stay Perks",
+     "tags": [
+      "roomwithaview",
+      "infinitypool",
+      "rooftoppool",
+      "hottub",
+      "oceanview",
+      "breakfastinbed"
+     ]
+    },
+    {
+     "name": "Road",
+     "tags": [
+      "roadtrip",
+      "scenicdrive",
+      "vanlife",
+      "rvlife",
+      "motorcycletrip"
+     ]
+    },
+    {
+     "name": "Rail",
+     "tags": [
+      "trainjourney",
+      "interrail",
+      "scenictrain",
+      "nighttrain"
+     ]
+    },
+    {
+     "name": "Air",
+     "tags": [
+      "windowseat",
+      "airportlife",
+      "layover",
+      "takeoff"
+     ]
+    },
+    {
+     "name": "Sea",
+     "tags": [
+      "ferryride",
+      "cruise",
+      "cruiselife",
+      "portofcall"
+     ]
+    }
+   ]
+  },
+  {
+   "name": "Nature & Outdoors",
+   "subs": [
+    {
+     "name": "Islands & Coast",
+     "tags": [
+      "islandlife",
+      "seaside",
+      "coastalwalk",
+      "fishingvillage",
+      "lighthouse"
+     ]
+    },
+    {
+     "name": "Countryside",
+     "tags": [
+      "countryside",
+      "villagelife",
+      "agritourism",
+      "lavenderfields",
+      "rollinghills"
+     ]
+    },
+    {
+     "name": "Mountains & Lakes",
+     "tags": [
+      "mountainview",
+      "alpine",
+      "lakeview",
+      "fjords",
+      "glacier"
+     ]
+    },
+    {
+     "name": "Desert & Wild",
+     "tags": [
+      "desert",
+      "dunes",
+      "canyon",
+      "volcano",
+      "jungle"
+     ]
+    },
+    {
+     "name": "Beach Life",
+     "tags": [
+      "beachday",
+      "beachvibes",
+      "sunbathing",
+      "beachclub",
+      "hiddenbeach",
+      "sandcastles"
+     ]
+    },
+    {
+     "name": "Board & Wind Sports",
+     "tags": [
+      "surfing",
+      "kitesurfing",
+      "windsurfing",
+      "paddleboarding",
+      "wakeboarding"
+     ]
+    },
+    {
+     "name": "Paddle & Motor",
+     "tags": [
+      "kayaking",
+      "canoeing",
+      "rafting",
+      "jetski",
+      "parasailing"
+     ]
+    },
+    {
+     "name": "Underwater",
+     "tags": [
+      "snorkeling",
+      "scubadiving",
+      "freediving",
+      "coralreef"
+     ]
+    },
+    {
+     "name": "Boats & Sailing",
+     "tags": [
+      "sailing",
+      "boattrip",
+      "yachtlife",
+      "catamaran",
+      "islandhopping",
+      "sunsetcruise"
+     ]
+    },
+    {
+     "name": "Lakes & Rivers",
+     "tags": [
+      "lakelife",
+      "wildswimming",
+      "waterfall",
+      "fishing",
+      "riverside"
+     ]
+    },
+    {
+     "name": "Hiking & Trekking",
+     "tags": [
+      "hiking",
+      "mountainhiking",
+      "trekking",
+      "trailblazing",
+      "takeahike",
+      "summit"
+     ]
+    },
+    {
+     "name": "Snow Sports",
+     "tags": [
+      "skiing",
+      "snowboarding",
+      "apreski",
+      "powderday",
+      "crosscountryskiing",
+      "snowshoeing",
+      "sledding"
+     ]
+    },
+    {
+     "name": "Climbing & Adrenaline",
+     "tags": [
+      "rockclimbing",
+      "bouldering",
+      "viaferrata",
+      "paragliding",
+      "zipline",
+      "canyoning",
+      "bungeejumping",
+      "skydiving"
+     ]
+    },
+    {
+     "name": "Nature & Wildlife",
+     "tags": [
+      "nationalpark",
+      "wilderness",
+      "safari",
+      "birdwatching",
+      "whalewatching",
+      "forestbathing"
+     ]
+    },
+    {
+     "name": "Outdoor Leisure",
+     "tags": [
+      "picnic",
+      "horseriding",
+      "golf",
+      "hotairballoon",
+      "campfire"
+     ]
+    }
+   ]
+  },
+  {
+   "name": "City & Culture",
+   "subs": [
+    {
+     "name": "Cities",
+     "tags": [
+      "skyline",
+      "bigcitylife",
+      "capitalcity",
+      "oldtown",
+      "citylights"
+     ]
+    },
+    {
+     "name": "Sightseeing",
+     "tags": [
+      "sightseeing",
+      "landmarks",
+      "walkingtour",
+      "hiddengems",
+      "viewpoint",
+      "streetphotography"
+     ]
+    },
+    {
+     "name": "Museums & Art",
+     "tags": [
+      "museumday",
+      "artgallery",
+      "streetart",
+      "exhibition",
+      "architecture"
+     ]
+    },
+    {
+     "name": "History & Heritage",
+     "tags": [
+      "ancientruins",
+      "castles",
+      "worldheritage",
+      "archaeology",
+      "historybuff"
+     ]
+    },
+    {
+     "name": "Sacred Places",
+     "tags": [
+      "temples",
+      "cathedrals",
+      "monastery",
+      "mosque",
+      "shrine"
+     ]
+    },
+    {
+     "name": "Local Life",
+     "tags": [
+      "localmarket",
+      "fleamarket",
+      "livelikealocal",
+      "localculture",
+      "traditionalvillage"
+     ]
+    },
+    {
+     "name": "Shopping",
+     "tags": [
+      "shoppingday",
+      "souvenirs",
+      "vintageshopping",
+      "localcrafts",
+      "outletshopping"
+     ]
+    }
+   ]
+  },
+  {
+   "name": "Food & Drink",
+   "subs": [
+    {
+     "name": "Eating Out",
+     "tags": [
+      "foodie",
+      "localfood",
+      "streetfood",
+      "finedining",
+      "tastingmenu",
+      "dinnerwithaview"
+     ]
+    },
+    {
+     "name": "Breakfast & Brunch",
+     "tags": [
+      "breakfast",
+      "brunch",
+      "pancakes",
+      "waffles",
+      "avocadotoast",
+      "croissant",
+      "eggsbenedict"
+     ]
+    },
+    {
+     "name": "Burgers & Fast Food",
+     "tags": [
+      "burger",
+      "cheeseburger",
+      "hotdog",
+      "friedchicken",
+      "fries",
+      "sandwich",
+      "wrap",
+      "wings"
+     ]
+    },
+    {
+     "name": "Grill & Meat",
+     "tags": [
+      "bbq",
+      "steak",
+      "steakhouse",
+      "ribs",
+      "pulledpork",
+      "skewers"
+     ]
+    },
+    {
+     "name": "Seafood",
+     "tags": [
+      "seafood",
+      "freshfish",
+      "oysters",
+      "lobster",
+      "grilledoctopus",
+      "mussels",
+      "calamari",
+      "fishandchips"
+     ]
+    },
+    {
+     "name": "Italian",
+     "tags": [
+      "pizza",
+      "pasta",
+      "carbonara",
+      "lasagna",
+      "risotto",
+      "focaccia",
+      "bruschetta"
+     ]
+    },
+    {
+     "name": "Greek & Mediterranean",
+     "tags": [
+      "souvlaki",
+      "gyros",
+      "moussaka",
+      "greeksalad",
+      "meze",
+      "tapas",
+      "paella"
+     ]
+    },
+    {
+     "name": "European Classics",
+     "tags": [
+      "fondue",
+      "raclette",
+      "schnitzel",
+      "bratwurst",
+      "pierogi",
+      "cheeseboard",
+      "charcuterie"
+     ]
+    },
+    {
+     "name": "Japanese & Korean",
+     "tags": [
+      "sushi",
+      "sashimi",
+      "ramen",
+      "tempura",
+      "udon",
+      "koreanbbq",
+      "bibimbap",
+      "kimchi"
+     ]
+    },
+    {
+     "name": "Chinese & Southeast Asian",
+     "tags": [
+      "dimsum",
+      "dumplings",
+      "noodles",
+      "hotpot",
+      "pekingduck",
+      "padthai",
+      "pho",
+      "satay",
+      "banhmi"
+     ]
+    },
+    {
+     "name": "Indian & Middle Eastern",
+     "tags": [
+      "curry",
+      "biryani",
+      "naan",
+      "tandoori",
+      "kebab",
+      "falafel",
+      "hummus",
+      "shawarma"
+     ]
+    },
+    {
+     "name": "Mexican & Latin",
+     "tags": [
+      "tacos",
+      "burrito",
+      "nachos",
+      "quesadilla",
+      "guacamole",
+      "ceviche",
+      "empanadas"
+     ]
+    },
+    {
+     "name": "Healthy & Plant-Based",
+     "tags": [
+      "vegan",
+      "vegetarian",
+      "glutenfree",
+      "saladbowl",
+      "pokebowl",
+      "smoothiebowl",
+      "acaibowl"
+     ]
+    },
+    {
+     "name": "Bakery & Desserts",
+     "tags": [
+      "bakery",
+      "gelato",
+      "icecream",
+      "cheesecake",
+      "tiramisu",
+      "donuts",
+      "crepes",
+      "churros",
+      "macarons",
+      "baklava"
+     ]
+    },
+    {
+     "name": "Coffee & Tea",
+     "tags": [
+      "coffeetime",
+      "cafehopping",
+      "specialtycoffee",
+      "espresso",
+      "matcha",
+      "bubbletea",
+      "afternoontea"
+     ]
+    },
+    {
+     "name": "Wine & Beer",
+     "tags": [
+      "winetasting",
+      "vineyard",
+      "winebar",
+      "craftbeer",
+      "brewerytour",
+      "beergarden"
+     ]
+    },
+    {
+     "name": "Cocktails & Spirits",
+     "tags": [
+      "cocktails",
+      "rooftopbar",
+      "happyhour",
+      "aperitivo",
+      "mojito",
+      "margarita",
+      "ginandtonic",
+      "whiskytasting",
+      "sake"
+     ]
+    },
+    {
+     "name": "Food Experiences",
+     "tags": [
+      "foodtour",
+      "cookingclass",
+      "farmtotable",
+      "foodmarket",
+      "foodtruck",
+      "chefstable"
+     ]
+    }
+   ]
+  },
+  {
+   "name": "Entertainment & Nightlife",
+   "subs": [
+    {
+     "name": "Live Events",
+     "tags": [
+      "livemusic",
+      "concertnight",
+      "theaternight",
+      "opera",
+      "standupcomedy"
+     ]
+    },
+    {
+     "name": "Nightlife",
+     "tags": [
+      "nightlife",
+      "clubbing",
+      "barhopping",
+      "pubcrawl",
+      "beachparty",
+      "karaoke",
+      "partytime"
+     ]
+    },
+    {
+     "name": "Fun & Games",
+     "tags": [
+      "gamenight",
+      "casino",
+      "bowling",
+      "escaperoom",
+      "arcade",
+      "minigolf"
+     ]
+    },
+    {
+     "name": "Parks & Attractions",
+     "tags": [
+      "themepark",
+      "waterpark",
+      "zoo",
+      "aquarium",
+      "rollercoaster",
+      "funfair"
+     ]
+    },
+    {
+     "name": "Sports Events",
+     "tags": [
+      "matchday",
+      "stadiumtour",
+      "raceday",
+      "marathon",
+      "sportsfan"
+     ]
+    },
+    {
+     "name": "Shows & Screens",
+     "tags": [
+      "openaircinema",
+      "movienight",
+      "circus",
+      "fireworks",
+      "resortentertainment"
+     ]
+    }
+   ]
+  },
+  {
+   "name": "Music & Dance",
+   "subs": [
+    {
+     "name": "Pop & Rock",
+     "tags": [
+      "popmusic",
+      "rockmusic",
+      "indiemusic",
+      "alternativerock",
+      "heavymetal",
+      "punkrock",
+      "kpop"
+     ]
+    },
+    {
+     "name": "Electronic",
+     "tags": [
+      "electronicmusic",
+      "housemusic",
+      "techno",
+      "edm",
+      "trance",
+      "drumandbass",
+      "djset"
+     ]
+    },
+    {
+     "name": "Hip-Hop & R&B",
+     "tags": [
+      "hiphop",
+      "rap",
+      "rnb",
+      "trapmusic",
+      "beatbox"
+     ]
+    },
+    {
+     "name": "Jazz, Blues & Soul",
+     "tags": [
+      "jazz",
+      "blues",
+      "soulmusic",
+      "funk",
+      "swingmusic",
+      "gospel",
+      "jazzclub"
+     ]
+    },
+    {
+     "name": "Classical & Musicals",
+     "tags": [
+      "classicalmusic",
+      "orchestra",
+      "symphony",
+      "pianoconcert",
+      "choir",
+      "musicaltheatre"
+     ]
+    },
+    {
+     "name": "Latin Music",
+     "tags": [
+      "latinmusic",
+      "reggaeton",
+      "cumbia",
+      "bossanova",
+      "mariachi",
+      "latinjazz",
+      "latinpop"
+     ]
+    },
+    {
+     "name": "Reggae & Afro",
+     "tags": [
+      "reggae",
+      "dancehall",
+      "ska",
+      "afrobeats",
+      "soca",
+      "calypso"
+     ]
+    },
+    {
+     "name": "Folk, Country & Traditional",
+     "tags": [
+      "folkmusic",
+      "countrymusic",
+      "bluegrass",
+      "acoustic",
+      "celticmusic",
+      "fado",
+      "rebetiko",
+      "bouzouki"
+     ]
+    },
+    {
+     "name": "Music Moments",
+     "tags": [
+      "streetmusic",
+      "buskers",
+      "jamsession",
+      "openmic",
+      "recordstore",
+      "vinyl",
+      "roadtripplaylist"
+     ]
+    },
+    {
+     "name": "Social Dancing",
+     "tags": [
+      "dancing",
+      "danceclass",
+      "socialdance",
+      "dancefloor",
+      "dancenight",
+      "linedance"
+     ]
+    },
+    {
+     "name": "Latin Dance",
+     "tags": [
+      "latindance",
+      "salsa",
+      "bachata",
+      "merengue",
+      "kizomba",
+      "chacha",
+      "rumba",
+      "samba",
+      "mambo"
+     ]
+    },
+    {
+     "name": "Tango & Ballroom",
+     "tags": [
+      "tango",
+      "milonga",
+      "ballroomdance",
+      "waltz",
+      "foxtrot",
+      "swingdance",
+      "lindyhop"
+     ]
+    },
+    {
+     "name": "Street Dance",
+     "tags": [
+      "streetdance",
+      "hiphopdance",
+      "breakdance",
+      "housedance",
+      "dancebattle"
+     ]
+    },
+    {
+     "name": "Ballet & Contemporary",
+     "tags": [
+      "ballet",
+      "contemporarydance",
+      "moderndance",
+      "jazzdance",
+      "tapdance"
+     ]
+    },
+    {
+     "name": "Traditional Dance",
+     "tags": [
+      "folkdance",
+      "flamenco",
+      "sirtaki",
+      "bellydance",
+      "irishdance",
+      "hula",
+      "capoeira"
+     ]
+    }
+   ]
+  },
+  {
+   "name": "Sports & Wellness",
+   "subs": [
+    {
+     "name": "Running",
+     "tags": [
+      "running",
+      "jogging",
+      "morningrun",
+      "trailrunning",
+      "runclub",
+      "funrun",
+      "halfmarathon"
+     ]
+    },
+    {
+     "name": "Cycling",
+     "tags": [
+      "cycling",
+      "bikeride",
+      "roadcycling",
+      "mountainbiking",
+      "gravelride",
+      "bikepacking",
+      "cycletour",
+      "ebike"
+     ]
+    },
+    {
+     "name": "Walking",
+     "tags": [
+      "walking",
+      "citywalk",
+      "eveningstroll",
+      "nordicwalking",
+      "stepcount"
+     ]
+    },
+    {
+     "name": "Gym & Fitness",
+     "tags": [
+      "workout",
+      "gym",
+      "outdoorworkout",
+      "calisthenics",
+      "hiit",
+      "strengthtraining",
+      "stretching"
+     ]
+    },
+    {
+     "name": "Yoga & Pilates",
+     "tags": [
+      "yoga",
+      "yogaflow",
+      "sunriseyoga",
+      "beachyoga",
+      "yogaretreat",
+      "pilates"
+     ]
+    },
+    {
+     "name": "Meditation & Mindfulness",
+     "tags": [
+      "meditation",
+      "meditating",
+      "mindfulness",
+      "breathwork",
+      "soundbath",
+      "silentretreat",
+      "journaling",
+      "digitaldetox"
+     ]
+    },
+    {
+     "name": "Swimming",
+     "tags": [
+      "swimming",
+      "seaswim",
+      "openwaterswimming",
+      "lapswim",
+      "aquafitness"
+     ]
+    },
+    {
+     "name": "Racket Sports",
+     "tags": [
+      "tennis",
+      "padel",
+      "pickleball",
+      "badminton",
+      "squash",
+      "tabletennis",
+      "beachtennis"
+     ]
+    },
+    {
+     "name": "Ball & Team Sports",
+     "tags": [
+      "football",
+      "basketball",
+      "volleyball",
+      "beachvolleyball",
+      "frisbee",
+      "pickupgame"
+     ]
+    },
+    {
+     "name": "Combat Sports",
+     "tags": [
+      "boxing",
+      "kickboxing",
+      "muaythai",
+      "jiujitsu",
+      "martialarts"
+     ]
+    },
+    {
+     "name": "Skate & Roll",
+     "tags": [
+      "skateboarding",
+      "rollerskating",
+      "iceskating",
+      "scooter"
+     ]
+    },
+    {
+     "name": "Spa & Thermal",
+     "tags": [
+      "spaday",
+      "hotsprings",
+      "thermalbaths",
+      "sauna",
+      "hammam",
+      "massage",
+      "coldplunge"
+     ]
+    },
+    {
+     "name": "Retreats & Self-Care",
+     "tags": [
+      "wellnessretreat",
+      "fitnessretreat",
+      "selfcare",
+      "detox",
+      "recoveryday"
+     ]
+    },
+    {
+     "name": "Lazy Days",
+     "tags": [
+      "poolday",
+      "lazyday",
+      "hammocklife",
+      "beachread",
+      "siesta"
+     ]
+    }
+   ]
+  }
+ ]
+}

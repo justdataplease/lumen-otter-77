@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Widget previews and shortcuts (the Notebook palette). The logo's colours live in PlaneMark and plane_icon.py. -->
+    <color name="brand_ink">#FF1E2A5A</color>
+    <color name="brand_highlighter">#FFF7E36A</color>
+    <color name="brand_paper">#FFFCFCF9</color>
+    <!-- The window behind the first frame: the default theme's page (Postcard Pop cream). -->
+    <color name="window_light">#FFFFF6E5</color>
+</resources>

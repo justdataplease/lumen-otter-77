@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Files the app shares with other apps: PDFs, clips, photos for export, and the camera's target for a new photo. -->
+<paths>
+    <cache-path name="exports" path="exports/" />
+    <cache-path name="camera" path="camera/" />
+    <files-path name="media" path="media/" />
+    <!-- Finished trip clips kept for the trip's Media tab (data/SavedClips): played and shared from there. -->
+    <files-path name="clips" path="clips/" />
+</paths>

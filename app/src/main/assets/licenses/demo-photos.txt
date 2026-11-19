@@ -1,0 +1,19 @@
+Photos of the Argentina & Patagonia demo trip (assets/demo/argentina), resized to 1280 px, metadata removed.
+
+obelisco-night.jpg: Argentina-01811 - Obelisk of Buenos Aires (49004693648) by Dennis G. Jarvis (CC BY-SA 2.0, https://creativecommons.org/licenses/by-sa/2.0) https://commons.wikimedia.org/wiki/File:Argentina-01811_-_Obelisk_of_Buenos_Aires_(49004693648).jpg
+cafe-medialunas.jpg: All butter croissant and latte - Blend Coffee Co. 2026-01-02 by Andy Li (CC0 1.0, https://creativecommons.org/publicdomain/zero/1.0/deed.en) https://commons.wikimedia.org/wiki/File:All_butter_croissant_and_latte_-_Blend_Coffee_Co._2026-01-02.jpg
+recoleta-cemetery.jpg: Cemetery Argentina Buenos Aires 2 by Monster4711 (CC0 1.0, https://creativecommons.org/publicdomain/zero/1.0/deed.en) https://commons.wikimedia.org/wiki/File:Cemetery_Argentina_Buenos_Aires_2.jpg
+rosedal.jpg: RosedalBuenosAires by Fulviusbsas (Public domain, https://creativecommons.org/publicdomain/mark/1.0/) https://commons.wikimedia.org/wiki/File:RosedalBuenosAires.JPG
+san-telmo.jpg: 2011.10.16.124619 Old house Defensa San Telmo Buenos Aires by Hermann Luyken (CC0 1.0, https://creativecommons.org/publicdomain/zero/1.0/deed.en) https://commons.wikimedia.org/wiki/File:2011.10.16.124619_Old_house_Defensa_San_Telmo_Buenos_Aires.jpg
+caminito.jpg: Caminito apr2008 by Tabetabe (Public domain, https://creativecommons.org/publicdomain/mark/1.0/) https://commons.wikimedia.org/wiki/File:Caminito_apr2008.jpg
+uco-vineyard.jpg: Vineyard in Mendoza, Argentina by David (CC BY 2.0, https://creativecommons.org/licenses/by/2.0) https://commons.wikimedia.org/wiki/File:Vineyard_in_Mendoza,_Argentina.jpg
+mendoza-grapes.jpg: Malbec grapes on the vine by Micah MacAllen (CC BY-SA 2.0, https://creativecommons.org/licenses/by-sa/2.0) https://commons.wikimedia.org/wiki/File:Malbec_grapes_on_the_vine.jpg
+llao-llao.jpg: Llao Llao desde punto panorámico by Alexrebolledo (CC BY-SA 3.0, https://creativecommons.org/licenses/by-sa/3.0) https://commons.wikimedia.org/wiki/File:Llao_Llao_desde_punto_panor%C3%A1mico.JPG
+campanario-view.jpg: Cerro Campanario Bariloche Argentina - panoramio (2) by Hiroki Ogawa (CC BY 3.0, https://creativecommons.org/licenses/by/3.0) https://commons.wikimedia.org/wiki/File:Cerro_Campanario_Bariloche_Argentina_-_panoramio_(2).jpg
+bariloche-centro.jpg: Bariloche Centro Civico by Phil Whitehouse (CC BY 2.0, https://creativecommons.org/licenses/by/2.0) https://commons.wikimedia.org/wiki/File:Bariloche_Centro_Civico.jpg
+puerto-panuelo-boat.jpg: Modesta Victoria P Puerto Panuelo 06-02-2018 by Wolfgang Fricke (CC BY 3.0, https://creativecommons.org/licenses/by/3.0) https://commons.wikimedia.org/wiki/File:Modesta_Victoria_P_Puerto_Panuelo_06-02-2018.jpg
+arrayanes.jpg: ParqueNacionalArrayanes099 by Claudio Elias (Public domain, https://creativecommons.org/publicdomain/mark/1.0/) https://commons.wikimedia.org/wiki/File:ParqueNacionalArrayanes099.JPG
+chalten-village.jpg: El Chaltén - Fitz Roy massif - Río Fitz Roy by Gagea (CC BY-SA 3.0, https://creativecommons.org/licenses/by-sa/3.0) https://commons.wikimedia.org/wiki/File:El_Chalt%C3%A9n_-_Fitz_Roy_massif_-_R%C3%ADo_Fitz_Roy.JPG
+condores-sunset.jpg: Mount Fitz Roy at Sunset by Masa Sakano (CC BY-SA 2.0, https://creativecommons.org/licenses/by-sa/2.0) https://commons.wikimedia.org/wiki/File:Mount_Fitz_Roy_at_Sunset.jpg
+laguna-capri.jpg: Fitz Roy and reflect in Laguna Capri (sunrise) by Gagea (CC BY-SA 3.0, https://creativecommons.org/licenses/by-sa/3.0) https://commons.wikimedia.org/wiki/File:Fitz_Roy_and_reflect_in_Laguna_Capri_(sunrise).JPG
+fitz-roy-cover.jpg: Fitz Roy 2 by Prissantenbär (Public domain, https://creativecommons.org/publicdomain/mark/1.0/) https://commons.wikimedia.org/wiki/File:Fitz_Roy_2.jpg

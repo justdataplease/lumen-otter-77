@@ -1,0 +1,176 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <!-- Route tracking (Wave 2C). Every level records through a location foreground service with its notification,
+         started only while the app is on screen. Boot: a note to open the app if it was recording (nothing starts).
+         Alarms are inexact (setAndAllowWhileIdle), so no exact-alarm permission. -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <!-- No recording with the app closed in the first Play version: "Allow all the time" stays out even if a library
+         adds it, while tracking/TrackingPlan.BACKGROUND_RECORDING is false (TrackingPlanTest checks the two agree; to
+         bring it back, flip the switch and declare the permission here instead). -->
+    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" tools:node="remove" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-feature android:name="android.hardware.location" android:required="false" />
+    <uses-feature android:name="android.hardware.location.gps" android:required="false" />
+    <uses-feature android:name="android.hardware.sensor.significantmotion" android:required="false" />
+
+    <!-- Dictation in the editor (Wave 2B) and voice lines in clips: asked for only when the mic button is first used.
+         The microphone is optional, so phones and tablets without one can still install the app. -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-feature android:name="android.hardware.microphone" android:required="false" />
+
+    <!-- The free Play launch sells nothing: the billing library's permission stays out until Pro goes on sale
+         (billing/ProBilling.PRO_FOR_SALE; delete this line then, ProSwitchTest checks the two agree). -->
+    <uses-permission android:name="com.android.vending.BILLING" tools:node="remove" />
+    <!-- No ads and no analytics: keep the advertising ID out even if a library adds it later. -->
+    <uses-permission android:name="com.google.android.gms.permission.AD_ID" tools:node="remove" />
+
+    <!-- Calendar sync (Wave 3L): asked only when "Add to calendar" or "Import from calendar" is used. Writes go
+         through the phone's own calendar accounts; no Google Calendar API scope. -->
+    <uses-permission android:name="android.permission.READ_CALENDAR" />
+    <uses-permission android:name="android.permission.WRITE_CALENDAR" />
+
+    <!-- Lets the app find the phone's speech recognizer (package visibility, Android 11+). -->
+    <queries>
+        <intent>
+            <action android:name="android.speech.RecognitionService" />
+        </intent>
+    </queries>
+
+    <!-- A finished clip's direct buttons (TikTok, Instagram, WhatsApp) show only for the apps on the phone. -->
+    <queries>
+        <package android:name="com.zhiliaoapp.musically" />
+        <package android:name="com.ss.android.ugc.trill" />
+        <package android:name="com.instagram.android" />
+        <package android:name="com.whatsapp" />
+    </queries>
+
+    <application
+        android:name=".BoringTravelApp"
+        android:allowBackup="false"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:roundIcon="@mipmap/ic_launcher"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.BoringTravel"
+        tools:targetApi="36">
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:launchMode="singleTop"
+            android:windowSoftInputMode="adjustResize">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <!-- Community: a post's link (Share on the post page) opens the post (community/CommunityLinks). -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" android:host="justdataplease.com" android:pathPrefix="/apps/boringtravel/post" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+            <!-- Plan from picture: screenshots or photos shared in go to the AI planner, which reads their places. -->
+            <intent-filter android:label="@string/share_pictures">
+                <action android:name="android.intent.action.SEND" />
+                <action android:name="android.intent.action.SEND_MULTIPLE" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="image/*" />
+            </intent-filter>
+            <!-- Travel together: a shared trip's link opens the app (verified once the site serves assetlinks.json). -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" android:host="justdataplease.com" android:pathPrefix="/apps/boringtravel/join" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="boringtravel" android:host="join" />
+            </intent-filter>
+        </activity>
+
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.files"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
+        <!-- Route tracking (Wave 2C). Receivers get explicit intents from this app or system broadcasts only. -->
+        <service
+            android:name=".tracking.RouteRecordingService"
+            android:exported="false"
+            android:foregroundServiceType="location" />
+        <receiver
+            android:name=".tracking.LocationUpdatesReceiver"
+            android:exported="false" />
+        <receiver
+            android:name=".tracking.BestFixAlarm"
+            android:exported="false" />
+        <receiver
+            android:name=".tracking.BootReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
+
+        <!-- "Today" home-screen widget (Wave 3I). -->
+        <receiver
+            android:name=".widget.TodayWidgetReceiver"
+            android:exported="true"
+            android:label="@string/widget_today_label">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/today_widget_info" />
+        </receiver>
+
+        <!-- "Quick bar" widgets: Note and Camera on the look's paper (4x1, and a 2x1 small one). The camera is the
+             system camera app (ACTION_IMAGE_CAPTURE to our FileProvider), so there is no CAMERA permission. -->
+        <receiver
+            android:name=".widget.QuickWidgetReceiver"
+            android:exported="true"
+            android:label="@string/widget_quick_label">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/quick_widget_info" />
+        </receiver>
+        <receiver
+            android:name=".widget.QuickSmallWidgetReceiver"
+            android:exported="true"
+            android:label="@string/widget_quick_small_label">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/quick_small_widget_info" />
+        </receiver>
+    </application>
+</manifest>

@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- app_name comes from the build type: "BoringTravel" in both (owner, 2026-11-08: no β after the name). -->
+    <string name="tagline">Boring travel, when everything can be interesting.</string>
+
+    <!-- Widget and launcher shortcuts -->
+    <string name="widget_today_label">Today</string>
+    <string name="widget_today_description">Today\'s trip, and quick Write, Photo and Voice.</string>
+    <string name="widget_quick_label">Quick bar</string>
+    <string name="widget_quick_description">A note or a photo in one tap, with today\'s trip.</string>
+    <string name="widget_quick_small_label">Quick bar, small</string>
+    <string name="widget_quick_small_description">Note and Camera in one tap.</string>
+    <string name="widget_note">Note</string>
+    <string name="widget_camera">Camera</string>
+    <string name="widget_voice">Voice note</string>
+    <!-- Sample trip day in the widget picker's preview. -->
+    <string name="widget_preview_day">Day 14 · El Chaltén</string>
+    <string name="widget_preview_trip">Argentina &amp; Patagonia</string>
+    <string name="shortcut_write">Write</string>
+    <string name="shortcut_camera">Take a photo</string>
+    <string name="shortcut_voice">Voice note</string>
+    <string name="shortcut_new_trip">New trip</string>
+    <!-- The share sheet's name for pictures shared in: the AI planner reads their places. -->
+    <string name="share_pictures">Plan from picture</string>
+</resources>

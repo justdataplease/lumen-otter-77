@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<lint>
+    <!-- bt_ic_*: tools/icons/icons.py writes every BtIcons icon as a vector drawable too (BtIconsTest checks each one
+         has its pair), for Glance, notifications and anything else that needs an R.drawable. The app draws the
+         ImageVectors today, so the drawables are unused on purpose; the release build shrinks them away. -->
+    <issue id="UnusedResources">
+        <ignore regexp="bt_ic_" />
+    </issue>
+</lint>

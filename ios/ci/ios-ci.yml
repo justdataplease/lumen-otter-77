@@ -1,0 +1,215 @@
+# BoringTravel for iPhone: the checks on GitHub's runners, started by hand only (Actions > iOS > Run workflow).
+#
+# This file belongs in the standalone repository (justdataplease/boringtravel) as .github/workflows/ios-ci.yml. That
+# repository is private, and a private repository's minutes are few: the organisation's free plan gives 2,000 a month
+# for all its private repositories together, a Mac minute counts as ten, and on 19 Nov 2026 they ran out (GitHub then
+# starts no job in any private repository until the next month). So nothing here runs on a push:
+# - the iPhone Simulator job (the Mac) runs when the workflow is started by hand;
+# - the tests and screenshots on Linux run only when asked for with it (`linux`), because the same checks run on
+#   Windows before every commit.
+# If the repository becomes public (free minutes, as Street Gym's), put the push trigger back.
+# There this project is the ios/ folder, beside app/ (Android).
+name: iOS
+on:
+  workflow_dispatch:
+    inputs:
+      linux:
+        description: Also run the tests and screenshots on Linux (they run on Windows before every commit)
+        type: boolean
+        default: false
+permissions:
+  contents: read
+concurrency:
+  # One run per branch: a new one replaces the one still going.
+  group: ios-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  # The engine and the screens as plain Kotlin, the iPhone-only Kotlin type-checked, the tests, and a PNG of every
+  # screen. No Mac needed.
+  screens:
+    name: Tests and screenshots
+    if: ${{ inputs.linux }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    defaults:
+      run:
+        working-directory: ios
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@748248ddd2a24f49513d8f472f81c3a07d4d50e1 # v4.4.4, as the Android checks use (v6.4.0 restored a cache that hid downloads)
+        with:
+          validate-wrappers: true
+          dependency-graph: disabled
+      # Three Gradle runs, not one. In one run the compiler's daemon, Gradle, the tests and the screenshots were all in
+      # memory together, and on this private repository's small runner GitHub stopped the job around its twelfth
+      # minute three times on 18 Nov 2026, with only "The operation was canceled" in the log. Now each part is a fresh
+      # JVM, the compiler's daemon is capped and stopped once the compiling is done, and ci/memory.sh prints the
+      # runner's memory every minute.
+      - name: Shared code is plain Kotlin, the iPhone-only Kotlin type-checks, the tests compile
+        run: |
+          set +e
+          bash ci/memory.sh & sampler=$!
+          bash ./gradlew :shared:compileCommonMainKotlinMetadata :composeApp:compileCommonMainKotlinMetadata \
+            :shared:compileIosMainKotlinMetadata :composeApp:compileIosMainKotlinMetadata \
+            :composeApp:desktopTestClasses --no-daemon --console=plain -Pkotlin.daemon.jvmargs=-Xmx3g
+          result=$?
+          kill $sampler
+          pkill -f KotlinCompileDaemon || true
+          exit $result
+      - name: Tests
+        run: |
+          set +e
+          bash ci/memory.sh & sampler=$!
+          bash ./gradlew :composeApp:desktopTest --no-daemon --console=plain -Pkotlin.daemon.jvmargs=-Xmx3g
+          result=$?
+          kill $sampler
+          exit $result
+      - name: Screenshots
+        run: |
+          set +e
+          bash ci/memory.sh & sampler=$!
+          bash ./gradlew :composeApp:screenshots --no-daemon --console=plain -Pkotlin.daemon.jvmargs=-Xmx3g
+          result=$?
+          kill $sampler
+          exit $result
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        if: always()
+        # The pictures are a convenience: a full artifact store (private repos have a quota) must not fail the checks.
+        continue-on-error: true
+        with:
+          name: screens-${{ github.sha }}
+          retention-days: 14
+          if-no-files-found: warn
+          path: |
+            ios/composeApp/build/screenshots/
+            ios/composeApp/build/reports/tests/
+
+  # The real thing: Kotlin compiled for iPhone, the app built by Xcode, opened in the Simulator and photographed.
+  simulator:
+    name: iPhone Simulator
+    runs-on: macos-26
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@748248ddd2a24f49513d8f472f81c3a07d4d50e1 # v4.4.4, as the Android checks use (v6.4.0 restored a cache that hid downloads)
+        with:
+          validate-wrappers: true
+          dependency-graph: disabled
+      # The Kotlin/Native compiler and Apple's platform libraries: about 1 GB, downloaded once.
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: ~/.konan
+          key: konan-${{ runner.os }}-${{ hashFiles('ios/build.gradle.kts') }}
+      - name: Compile the screens and the shared Android files for iPhone
+        working-directory: ios
+        run: sh ./gradlew :composeApp:compileKotlinIosSimulatorArm64 --console=plain
+      # The code read in from Android has run on the desktop's JVM only; on iPhone it is Kotlin/Native, whose regular
+      # expressions and text functions differ in places and fail only when they run. composeApp/src/commonTest runs on
+      # both (on Linux with the other tests, here on the Simulator). A failure here doesn't stop the tour below; the
+      # job fails at its end instead, after the pictures.
+      - name: Run the shared tests on the iPhone Simulator
+        id: simtests
+        continue-on-error: true
+        working-directory: ios
+        run: |
+          set -euo pipefail
+          DEVICE=$(xcrun simctl list devices available | grep -oE 'iPhone [0-9]+ Pro Max' | sort -t' ' -k2 -n | tail -1)
+          UDID=$(xcrun simctl list devices available | grep -F "    $DEVICE (" | head -1 | grep -oE '[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}')
+          echo "Simulator for the tests: $DEVICE ($UDID)"
+          # The engine's own tests too: they have run on the JVM only, and it runs on iPhone the same way.
+          sh ./gradlew :composeApp:iosSimulatorArm64Test :shared:iosSimulatorArm64Test -PsimulatorDevice="$UDID" --continue --console=plain
+      - name: Print the Simulator tests' failures
+        if: always()
+        continue-on-error: true
+        working-directory: ios
+        run: |
+          python3 - <<'PY'
+          import glob, xml.etree.ElementTree as ET
+          total = failed = 0
+          paths = sorted(glob.glob("composeApp/build/test-results/iosSimulatorArm64Test/*.xml") + glob.glob("build/engine/test-results/iosSimulatorArm64Test/*.xml"))
+          if not paths:
+              print("No test results (the tests did not compile or run)")
+          for path in paths:
+              for case in ET.parse(path).getroot().iter("testcase"):
+                  total += 1
+                  for problem in list(case.findall("failure")) + list(case.findall("error")):
+                      failed += 1
+                      print(f"FAILED {case.get('classname')}.{case.get('name')}")
+                      print("  " + (problem.get("message") or "").strip()[:400])
+                      print("  " + (problem.text or "").strip()[:2000].replace("\n", "\n  "))
+          print(f"Simulator tests: {total} run, {failed} failed")
+          PY
+      - name: Generate the Xcode project
+        working-directory: ios/iosApp
+        run: |
+          brew install xcodegen
+          xcodegen generate
+      - name: Build the app and tour it in the Simulator
+        working-directory: ios/iosApp
+        run: |
+          set -euo pipefail
+          # The newest large iPhone this Xcode has.
+          DEVICE=$(xcrun simctl list devices available | grep -oE 'iPhone [0-9]+ Pro Max' | sort -t' ' -k2 -n | tail -1)
+          echo "Simulator: $DEVICE"
+          xcodebuild test -project BoringTravel.xcodeproj -scheme BoringTravel \
+            -destination "platform=iOS Simulator,name=$DEVICE" \
+            -resultBundlePath "$RUNNER_TEMP/tour.xcresult" \
+            CODE_SIGNING_ALLOWED=NO
+      - name: Take the pictures out of the test result
+        if: always()
+        run: xcrun xcresulttool export attachments --path "$RUNNER_TEMP/tour.xcresult" --output-path "$RUNNER_TEMP/tour"
+      # A private repository's artifact store can be full (the upload below then keeps nothing), so small copies of
+      # the pictures also go into the log: `gh run view <run> --log > run.log`, then ios/tools/pictures_from_log.py.
+      # What the app itself printed (Kotlin's uncaught errors, the BT-DIAG lines of a sound or a map picture that
+      # couldn't be made, WebKit's and Metal's complaints): the only place they show (as Street Gym's workflow does).
+      - name: Print what the app wrote while it ran
+        if: always()
+        run: |
+          xcrun xcresulttool export diagnostics --path "$RUNNER_TEMP/tour.xcresult" --output-path "$RUNNER_TEMP/diagnostics" || true
+          find "$RUNNER_TEMP/diagnostics" -type f -name 'StandardOutputAndStandardError-*' 2>/dev/null | while read -r f; do
+            echo "APP-OUTPUT-BEGIN"
+            grep -E 'BT-DIAG|Uncaught|Exception|Error' "$f" | grep -v -E '\[Default\]|XC_kAX' | tail -n 200 || true
+            echo "APP-OUTPUT-END"
+          done
+      - name: Print small copies of the pictures in the log
+        if: always()
+        working-directory: ${{ runner.temp }}
+        run: |
+          [ -d tour ] || exit 0
+          cd tour
+          echo "PICTURES-MANIFEST-BEGIN"; cat manifest.json 2>/dev/null || true; echo; echo "PICTURES-MANIFEST-END"
+          for f in *.png; do
+            [ -f "$f" ] || continue
+            sips -Z 1300 -s format jpeg -s formatOptions 65 "$f" --out "${f%.png}.jpg" >/dev/null 2>&1 || continue
+            echo "PICTURE-BEGIN $f"
+            base64 -b 160 -i "${f%.png}.jpg"
+            echo "PICTURE-END"
+            rm -f "${f%.png}.jpg"
+          done
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        if: always()
+        # The pictures are a convenience: a full artifact store (private repos have a quota) must not fail the checks.
+        continue-on-error: true
+        with:
+          name: simulator-${{ github.sha }}
+          retention-days: 14
+          if-no-files-found: warn
+          path: ${{ runner.temp }}/tour/
+      # The shared tests failed on the Simulator (their failures are printed above): the job fails, after the tour.
+      - name: The shared tests on the Simulator passed
+        if: always() && steps.simtests.outcome == 'failure'
+        run: |
+          echo "The shared tests failed on the iPhone Simulator: see 'Print the Simulator tests' failures'."
+          exit 1
