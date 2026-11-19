@@ -92,7 +92,10 @@ class CommunityCache(private val files: MediaFiles, private val maxBytes: Long =
         all[k] = bytes.size.toLong() to now()
         var total = all.values.sumOf { it.first }
         if (total > maxBytes) {
-            for ((old, v) in all.entries.sortedBy { it.value.second }.toList()) {
+            // Keys and values copied out first: on Kotlin/Native a map's entries read the live map, so an entry kept
+            // past a remove() throws (Mac run of round 24); the oldest read first.
+            val oldest = all.entries.map { it.key to it.value }.sortedBy { it.second.second }
+            for ((old, v) in oldest) {
                 if (total <= maxBytes) break
                 if (old == k) continue
                 files.delete("$FOLDER/$old")

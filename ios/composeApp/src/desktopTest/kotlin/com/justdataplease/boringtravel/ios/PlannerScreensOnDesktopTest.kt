@@ -52,9 +52,9 @@ import kotlin.test.assertTrue
 /**
  * The AI planner on the desktop, on recorded model answers ([RecordedAi] through [PlannerNet]; never a model, never the
  * network): the empty chat, New trip's three AI ways, a new trip made from the trip questions and reviewed (one item
- * unticked) then created and shown on Plan, a saved trip changed from its header and saved, Stop, the day's limit, a
- * build without Firebase ids, a link and pictures attached and removed, and Me › AI with an own key tested, masked and
- * removed, which never goes into a backup.
+ * unticked) then created and shown on Plan, a saved trip changed from its Plan's Chat and saved, an empty plan's Chat
+ * beside Add (Android 1.22.0), Stop, the day's limit, a build without Firebase ids, a link and pictures attached and
+ * removed, and Me › AI with an own key tested, masked and removed, which never goes into a backup.
  */
 @OptIn(ExperimentalTestApi::class)
 class PlannerScreensOnDesktopTest {
@@ -122,7 +122,7 @@ class PlannerScreensOnDesktopTest {
         val net = PlannerNet()
         runDesktopComposeUiTest(width = 440, height = 1600) {
             startApp(TripBook(MemoryTripFile()), Place.Planner(null, null), net = net)
-            waitForText("Make the whole trip with AI")
+            waitForText("Make a new trip")
             onNodeWithText("AI planner").assertExists()
             // Eyebrow upper-cases its text.
             onNodeWithText("NEW TRIP").assertExists()
@@ -267,7 +267,7 @@ class PlannerScreensOnDesktopTest {
     }
 
     @Test
-    fun aSavedTripIsChangedFromItsHeaderAndSaved() {
+    fun aSavedTripIsChangedFromItsPlansChatAndSaved() {
         val book = smallTripBook()
         val trip = book.trips(SAMPLE_TODAY).single()
         val dinner = book.items(trip.id).single { it.title == "Dinner in Chora" }
@@ -275,11 +275,15 @@ class PlannerScreensOnDesktopTest {
         val net = PlannerNet().answer(RecordedAi::isBuiltIn, RecordedAi.change(dinner.id, idea.id))
         runDesktopComposeUiTest(width = 440, height = 1600) {
             startApp(book, Place.Trip(trip.id), net = net)
-            // TripHeader's sparkle is a BtIconButton labelled "Plan with AI" (Android's TripScreen.kt).
-            onNodeWithContentDescription("Plan with AI").performClick()
+            // Android 1.22.0: the ✦ left the top bar and the Plan with AI card the plan; Chat floats beside Add.
+            waitForText("Dinner in Chora")
+            assertFalse(has("Plan with AI"))
+            assertTrue(onAllNodesWithContentDescription("Plan with AI").fetchSemanticsNodes().isEmpty())
+            onNodeWithText("Add").assertExists()
+            onNodeWithText("Chat").performClick()
 
             // The chat for this trip: its name and dates above, Add from; its plan isn't empty, so no plan button.
-            waitForText("Change the trip with AI")
+            waitForText("Change this trip")
             assertTrue(has("NAXOS ·", substring = true))
             onNodeWithText("ADD FROM").assertExists()
             assertFalse(has("Plan the days for me"))
@@ -301,9 +305,29 @@ class PlannerScreensOnDesktopTest {
             assertEquals(setOf("Ferry from Paros", "Hotel Grotta", "Dinner in Chora"), book.items(trip.id).map { it.title }.toSet())
 
             // Back on the trip's Plan, the change in it.
-            waitUntil(timeoutMillis = 10_000) { !has("Change the trip with AI") && has("Dinner in Chora") }
+            waitUntil(timeoutMillis = 10_000) { !has("Change this trip") && has("Dinner in Chora") }
             assertTrue(has("20:30"))
             assertFalse(has("Portara at sunset"))
+        }
+    }
+
+    @Test
+    fun anEmptyPlanHasChatBesideAddAPlaceOrANote() {
+        val book = TripBook(MemoryTripFile())
+        val trip = book.newTrip("Naxos", SAMPLE_TODAY.plusDays(20), SAMPLE_TODAY.plusDays(23))
+        runDesktopComposeUiTest(width = 440, height = 1600) {
+            startApp(book, Place.Trip(trip.id))
+            // Android 1.22.0's AddButtons: Chat (the highlighter's fill) and "Add a place or a note", in the list.
+            waitForText("Add a place or a note")
+            onNodeWithText("Chat").assertExists()
+            assertFalse(has("Plan with AI"))
+            assertFalse(has("Add"))
+            assertTrue(onAllNodesWithContentDescription("Plan with AI").fetchSemanticsNodes().isEmpty())
+            onNodeWithText("Chat").performClick()
+            waitForText("Change this trip")
+            assertTrue(has("NAXOS ·", substring = true))
+            // An empty plan: the planner offers to plan the days.
+            onNodeWithText("Plan the days for me").assertExists()
         }
     }
 
@@ -313,7 +337,7 @@ class PlannerScreensOnDesktopTest {
         val net = PlannerNet().hold(RecordedAi::isBuiltIn)
         runDesktopComposeUiTest(width = 440, height = 1600) {
             startApp(TripBook(MemoryTripFile()), Place.Planner(null, null), settings = settings, net = net)
-            waitForText("Make the whole trip with AI")
+            waitForText("Make a new trip")
             onAllNodes(hasSetTextAction()).onFirst().performTextInput(NEW_MESSAGE)
             onNodeWithContentDescription("Send").performClick()
 
@@ -322,7 +346,7 @@ class PlannerScreensOnDesktopTest {
             // no step line comes before the model's first answer, so the working line is the default.
             onNodeWithText("Reading your message").assertExists()
             assertTrue(has(NEW_MESSAGE))
-            assertFalse(has("Make the whole trip with AI"))
+            assertFalse(has("Make a new trip"))
 
             onNodeWithText("Stop").performClick()
             waitForText("Planning stopped. Your message is kept.")

@@ -12,7 +12,6 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -63,7 +62,6 @@ import com.justdataplease.boringtravel.model.Vehicle
 import com.justdataplease.boringtravel.places.DayPlace
 import com.justdataplease.boringtravel.places.VisitMatcher
 import com.justdataplease.boringtravel.ui.calendar.CalendarPrompt
-import com.justdataplease.boringtravel.ui.components.BtCard
 import com.justdataplease.boringtravel.ui.components.BtFab
 import com.justdataplease.boringtravel.ui.components.BtGhostButton
 import com.justdataplease.boringtravel.ui.components.BtTextDialog
@@ -93,8 +91,7 @@ private val NOT_SCROLLED = Any()
 
 /**
  * The trip's plan, as the List or the Calendar ([PlanView]; Me › Plan view and the switch on the tab's own top row,
- * which also has Expand/Collapse for the List). Both have Chat (the AI planner) and Add at the bottom, and end with
- * Add from a link.
+ * which also has Expand/Collapse for the List). Both have Chat (the AI planner) and Add at the bottom.
  *
  * The List ([planList]) has every day under its header, empty days folded, Ideas last. Collapsed: one line per item.
  * Expanded (design boards "Plan · day by day, travel per leg"): "Day 13 · El Chaltén", the day's items with their kind
@@ -292,8 +289,8 @@ internal fun PlanTab(graph: AppGraph, actions: AppActions, tripId: String, trip:
                     PlanView.Calendar -> planCalendar(ctx, days, selectedDay, firstDay, select)
                 }
                 if (all.isEmpty()) item(key = "add") { AddButtons(onChat = chat, onAdd = add) }
-                // Owner, 17 Nov 2026: "add places to an existing trip using all methods": a Google Maps list, a blog, a Google Doc.
-                item(key = "link") { AddFromLinkCard { actions.copySite(tripId = tripId) } }
+                // No "Add from a link" card under the plan (owner, 19 Nov 2026: "keep it clean"): Chat › Link takes a
+                // Google Maps list, a blog or a Google Doc, and the trip's ⋮ keeps Add from a link.
             }
             if (all.isNotEmpty()) {
                 Row(Modifier.align(Alignment.BottomEnd).padding(16.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -612,16 +609,4 @@ private fun AddButtons(onChat: () -> Unit, onAdd: () -> Unit) {
         BtFab("Chat", onClick = onChat, icon = BtIcons.Sparkle, accent = true)
         BtFab("Add a place or a note", onClick = onAdd, modifier = Modifier.weight(1f))
     }
-}
-
-/** Copy from a link, into this trip: a shared Google Maps list's places, or a blog's or document's places and notes. */
-@Composable
-private fun AddFromLinkCard(onClick: () -> Unit) {
-    BtCard(Modifier.padding(horizontal = 20.dp).padding(top = 12.dp), padding = PaddingValues(horizontal = 16.dp, vertical = 14.dp), onClick = onClick) {
-        Column {
-            Text("Add from a link", style = Bt.text.item)
-            Text("A Google Maps list, a blog post or a Google Doc: its places go into this plan.", Modifier.padding(top = 2.dp), style = Bt.text.sub)
-        }
-    }
-    Box(Modifier.height(8.dp))
 }

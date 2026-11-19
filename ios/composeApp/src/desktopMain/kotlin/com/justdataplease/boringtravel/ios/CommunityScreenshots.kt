@@ -329,6 +329,9 @@ fun community(out: File) {
 
     // ------------------------------------------------------------------ New trip
     signedIn().let { (world, c) -> drive("new-trip-community", tall = 1.15f) { App(world, c, sampleBook(), Place.NewTrip) } }
+
+    // ------------------------------------------------------------------ round 25: posting, profiles, Community profile
+    posting(out) { name, tall, frames, content, steps -> driveThen(name, tall, frames, content, steps) }
 }
 
 /**
@@ -375,6 +378,17 @@ class CommunityDriver(width: Int, height: Int, content: @Composable () -> Unit) 
 
     /** A tap on what is described as (or contains) [description]. */
     fun tapDescription(description: String) = tapAt((find { it.config.getOrNull(SemanticsProperties.ContentDescription)?.any { d -> description in d } == true } ?: error("Nothing described as $description")).center)
+
+    /** A tap on the [index]th node described as (or containing) [description] (a grid's photos). */
+    fun tapDescription(description: String, index: Int) {
+        val found = mutableListOf<Rect>()
+        fun walk(n: SemanticsNode) {
+            if (n.config.getOrNull(SemanticsProperties.ContentDescription)?.any { d -> description in d } == true) found += n.boundsInRoot
+            n.children.forEach(::walk)
+        }
+        scene.semanticsOwners.forEach { walk(it.unmergedRootSemanticsNode) }
+        tapAt(found.getOrNull(index)?.center ?: error("No ${index}th $description"))
+    }
 
     /** A tap on the last node showing [text] (a menu's line over the page, a sheet's row). */
     fun tapText(text: String) = tapAt((find(last = true) { it.config.getOrNull(SemanticsProperties.Text)?.any { t -> t.text == text } == true } ?: error("No text $text")).center)

@@ -324,4 +324,48 @@ class CommunitySmokeTest {
         assertNull(cache.doc("posts/x39"))
         assertNull(cache.page("latest"))
     }
+
+    /**
+     * One write that takes the cache over its size by several entries evicts them all in one go (Mac run of round 24:
+     * Kotlin/Native's map entries read the live map, so the loop that kept them threw after the first remove()).
+     */
+    @Test fun aWriteOverTheLimitEvictsSeveralEntriesAtOnce() = runTest {
+        var clock = 0L
+        val files = MemoryMediaFiles()
+        val cache = CommunityCache(files, maxBytes = 4_000, now = { clock++ })
+        fun doc(id: String, title: String) = FsValues.doc(
+            Json.parseToJsonElement("""{"name":"projects/p/databases/(default)/documents/posts/$id","fields":{"title":{"stringValue":"$title"}}}""").jsonObject,
+        )!!
+        // Small documents fill it nearly to its size (each one measured); then one near a quarter of the cache pushes
+        // several of the oldest out at once.
+        cache.putDoc(doc("s0", "s".repeat(60)))
+        val each = files.list("community").filter { it != "index.txt" }.sumOf { files.size("community/$it") ?: 0L }
+        val n = (3_900 / each).toInt()
+        for (i in 1 until n) cache.putDoc(doc("s$i", "s".repeat(60)))
+        cache.putDoc(doc("big", "b".repeat(880)))
+        assertNotNull(cache.doc("posts/big"))
+        assertNull(cache.doc("posts/s0"))
+        assertNull(cache.doc("posts/s1"))
+        assertNull(cache.doc("posts/s2"))
+        assertNotNull(cache.doc("posts/s${n - 1}"))
+        // The index on disk lists only what is kept, read back by a fresh cache.
+        val again = CommunityCache(files, maxBytes = 4_000, now = { clock++ })
+        assertNotNull(again.doc("posts/big"))
+        assertNull(again.doc("posts/s1"))
+        // java.util.LinkedHashMap in access order (compat's): several eldest gone in one put, each read before it goes.
+        val seen = mutableListOf<String>()
+        val lru = object : com.justdataplease.boringtravel.compat.AccessOrderMap<String, Int>(16, 0.75f, true) {
+            override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Int>?): Boolean {
+                if (size <= 2) return false
+                seen += eldest!!.key
+                return true
+            }
+        }
+        lru["a"] = 1
+        lru["b"] = 2
+        lru["c"] = 3
+        lru["d"] = 4
+        assertEquals(listOf("a", "b"), seen)
+        assertEquals(2, lru.size)
+    }
 }

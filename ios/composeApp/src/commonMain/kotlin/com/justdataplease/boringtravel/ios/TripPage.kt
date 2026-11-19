@@ -64,8 +64,6 @@ import com.justdataplease.boringtravel.places.VisitMatcher
 import com.justdataplease.boringtravel.time.LocalDate
 import com.justdataplease.boringtravel.time.localDateOfEpochDay
 import com.justdataplease.boringtravel.ui.components.BtBackButton
-import com.justdataplease.boringtravel.ui.components.BtButton
-import com.justdataplease.boringtravel.ui.components.BtCard
 import com.justdataplease.boringtravel.ui.components.BtFab
 import com.justdataplease.boringtravel.ui.components.BtGhostButton
 import com.justdataplease.boringtravel.ui.components.BtIconButton
@@ -96,9 +94,10 @@ private val NOT_SCROLLED = Any()
 
 /**
  * One of the traveller's trips in trip mode, as the Android app's trip screen (ui/trip/TripScreen.kt): back, "Day 14 of
- * 31" (or the dates) with DEMO on an example trip, the trip's name, and the trip's menu (Edit trip, Delete trip); then
- * the section on show, which the bottom bar picks while a trip is open (Plan · Journal · Map · Media, the Android app's
- * TripNav). Plan is [PlanTab]; Journal is [TripJournalTab]; Map is [TripMapBoard]; Media is [TripMediaTab] (the trip's
+ * 31" (or the dates) with DEMO on an example trip, the trip's name, and the trip's menu (Edit trip, Add from a link,
+ * Post to community, Community post when this phone posted the trip, Make a clip, Make a book, Share, Calendar, Delete
+ * trip); then the section on show, which the bottom bar picks while a trip is open (Plan · Journal · Map · Media, the
+ * Android app's TripNav). Plan is [PlanTab]; Journal is [TripJournalTab]; Map is [TripMapBoard]; Media is [TripMediaTab] (the trip's
  * saved clips and its photos by day, since round 20; [onAddMedia] opens a new note with the photo library).
  *
  * Everything read and every change goes through the engine's [TripBook]; [revision] changes whenever the trips do.
@@ -132,18 +131,27 @@ fun TripPage(
     calendarAtStart: Boolean = false,
     onShare: () -> Unit = {},
     onSay: (String) -> Unit = {},
-    onPlanWithAi: () -> Unit = {},
+    /** The Plan's Chat: the AI planner on this trip (Android 1.22.0: beside Add; the ✦ left the top bar). */
+    onChat: () -> Unit = {},
     onClip: () -> Unit = {},
     onAddMedia: () -> Unit = onWrite,
     onBook: () -> Unit = {},
     /** The item sheet's Write: a new note about plan item [itemId] (Android's AppActions.writeAbout). */
     onWriteAbout: (itemId: String) -> Unit = { onWrite() },
+    /** The ⋮'s Post to community: the composer for this trip (round 25). */
+    onPostToCommunity: () -> Unit = {},
+    /**
+     * The ⋮'s Community post, only when this phone posted the trip (its post link): the post's sheet (Android's
+     * PostSyncSheet, read in), drawn with its onClose.
+     */
+    postSheet: (@Composable (onClose: () -> Unit) -> Unit)? = null,
 ) {
     val trip = remember(book, tripId, revision) { book.trip(tripId) }
     var calendarOpen by remember { mutableStateOf(calendarAtStart) }
     val prefs = settings ?: remember { AppSettings.ready() }
     val files = LocalMediaKit.current.files
     var deleting by remember { mutableStateOf(false) }
+    var postOpen by rememberSaveable { mutableStateOf(false) }
     // Deleted elsewhere while open: the screen closes itself (the Android app's TripScreen).
     LaunchedEffect(trip == null) { if (trip == null) onDeleted() }
     // The trip's countries, from the side it is on (the examples, or the traveller's own).
@@ -153,7 +161,8 @@ fun TripPage(
         Column(Modifier.fillMaxSize()) {
             TripHeader(
                 trip, flags, today, onBack, onEdit, onDelete = { deleting = true }, menuAtStart, onAddFromLink, onCalendar = { calendarOpen = true },
-                onShare = onShare, onBook = onBook, onPlanWithAi = onPlanWithAi, onClip = onClip,
+                onShare = onShare, onBook = onBook, onClip = onClip, onPostToCommunity = onPostToCommunity,
+                onPost = if (postSheet != null) ({ postOpen = true }) else null,
             )
             AnimatedContent(
                 targetState = tab,
@@ -164,7 +173,7 @@ fun TripPage(
                 Box(Modifier.fillMaxSize()) {
                     when (section) {
                         TripTab.Plan -> PlanTab(
-                            book, trip, today, revision, prefs, onChanged, onEdit, planDay, sheetAtStart, travelAtStart, onPlace, onAddFromLink, onPlanWithAi,
+                            book, trip, today, revision, prefs, onChanged, onEdit, planDay, sheetAtStart, travelAtStart, onPlace, onChat,
                             onOpenNote = onOpenNote, onWriteAbout = onWriteAbout,
                         )
                         TripTab.Journal -> TripJournalTab(book, tripId, revision, onOpenNote, onWrite) {
@@ -179,6 +188,8 @@ fun TripPage(
     }
     // The trip and the phone's calendars (⋮ › Calendar).
     if (calendarOpen) CalendarSheet(book, tripId, revision, onClose = { calendarOpen = false }, onChanged = onChanged)
+    // The trip's community post: update it now (only by hand), open it, stop updating it.
+    if (postOpen && postSheet != null) postSheet { postOpen = false }
     if (deleting) DeleteTripDialog(
         onConfirm = {
             deleting = false
@@ -197,9 +208,9 @@ fun TripPage(
  * drop says what changed with Undo ([PlanDrop]); held and let go it opens Copy name, Copy address and Share. A day's
  * title opens the day's place page ([onPlace], the item [PlanDayAnchor] picks); held, it renames the day. A leg between
  * two places opens its travel ([TravelModeChooser]). The circles show a link's picture or favicon, else the place's
- * Wikipedia photo. Under the plan, "Add from a link" ([onAddFromLink]).
- *
- * Left out until their rounds: Plan with AI, ticking what the recorded route passed (no route tracking here yet).
+ * Wikipedia photo. Chat (the AI planner, [onChat]) and Add: a pair in an empty plan, floating over the list's corner
+ * once there are items (Android 1.22.0). No "Add from a link" card under the plan (Android, 19 Nov 2026): the trip's
+ * menu keeps it. Items the recorded route passed on their day are ticked when the plan opens.
  */
 @Composable
 private fun PlanTab(
@@ -214,8 +225,7 @@ private fun PlanTab(
     sheetAtStart: SheetTarget?,
     travelAtStart: String?,
     onPlace: (itemId: String) -> Unit,
-    onAddFromLink: () -> Unit,
-    onPlanWithAi: () -> Unit,
+    onChat: () -> Unit,
     onOpenNote: (String) -> Unit = {},
     onWriteAbout: (String) -> Unit = {},
 ) {
@@ -384,7 +394,8 @@ private fun PlanTab(
         if (error != null && travelKey == null) {
             Text(error, Modifier.padding(horizontal = 20.dp, vertical = 6.dp), style = Bt.text.fine, color = Bt.colors.danger)
         }
-        // Adding is a real button: in an empty plan it sits in the list; once there are items it floats.
+        // Adding is a real button: in an empty plan it sits in the list; once there are items it floats over the list's
+        // corner. Chat (the AI planner) sits beside it (Android 1.22.0: the owner's option A).
         val add = { sheet = SheetTarget(null, if (view == PlanView.List) PlanDays.initial(days, today) else selectedDay) }
         Box(Modifier.weight(1f).fillMaxWidth()) {
             LazyColumn(
@@ -398,14 +409,14 @@ private fun PlanTab(
                     PlanView.List -> planList(ctx, dragRows ?: rows, expanded, reorder)
                     PlanView.Calendar -> planCalendar(ctx, days, selectedDay, phone.firstDayOfWeek) { selectedKey = it?.toEpochDay()?.toString() ?: PLAN_IDEAS }
                 }
-                if (all.isEmpty()) item(key = "add") {
-                    BtButton("Add a place or a note", onClick = add, modifier = Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 12.dp), icon = BtIcons.Add)
-                }
-                // The AI planner in plain sight; then a Google Maps list's places into this plan (Copy from a link).
-                item(key = "ai") { PlanWithAiCard(onPlanWithAi) }
-                item(key = "link") { AddFromLinkCard(onAddFromLink) }
+                if (all.isEmpty()) item(key = "add") { AddButtons(onChat = onChat, onAdd = add) }
             }
-            if (all.isNotEmpty()) BtFab("Add", onClick = add, modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp))
+            if (all.isNotEmpty()) {
+                Row(Modifier.align(Alignment.BottomEnd).padding(16.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    BtFab("Chat", onClick = onChat, icon = BtIcons.Sparkle, accent = true)
+                    BtFab("Add", onClick = add)
+                }
+            }
             // "Moved to Tue 14 · 11:00" with Undo, above the Add button.
             BtSnackbarHost(notices, Modifier.align(Alignment.BottomCenter).padding(bottom = 64.dp))
         }
@@ -554,36 +565,24 @@ fun TravelModeIcon(vehicle: Vehicle, modifier: Modifier = Modifier.size(40.dp), 
     }
 }
 
-/** The AI planner in plain sight: "Plan with AI" and one line on what it does (no PRO tag: Pro isn't sold here). */
+/** Chat and "Add a place or a note": the main buttons of a plan with nothing in it yet, the pair that floats later. */
 @Composable
-private fun PlanWithAiCard(onClick: () -> Unit) {
-    BtCard(Modifier.padding(horizontal = 20.dp).padding(top = 12.dp), padding = PaddingValues(horizontal = 16.dp, vertical = 14.dp), onClick = onClick) {
-        Column {
-            Text("Plan with AI", style = Bt.text.item)
-            Text("Paste rough notes, add screenshots or links, or chat. AI turns them into days, places and times.", Modifier.padding(top = 2.dp), style = Bt.text.sub)
-        }
+private fun AddButtons(onChat: () -> Unit, onAdd: () -> Unit) {
+    Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 12.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        BtFab("Chat", onClick = onChat, icon = BtIcons.Sparkle, accent = true)
+        BtFab("Add a place or a note", onClick = onAdd, modifier = Modifier.weight(1f))
     }
 }
 
-/** Copy from a link, into this trip: a shared Google Maps list's places, or a blog's or document's places and notes. */
-@Composable
-private fun AddFromLinkCard(onClick: () -> Unit) {
-    Column(Modifier.padding(top = 12.dp)) {
-        BtCard(Modifier.padding(horizontal = 20.dp), padding = PaddingValues(horizontal = 16.dp, vertical = 14.dp), onClick = onClick) {
-            Column {
-                Text("Add from a link", style = Bt.text.item)
-                Text("A Google Maps list, a blog post or a Google Doc: its places go into this plan.", Modifier.padding(top = 2.dp), style = Bt.text.sub)
-            }
-        }
-    }
-}
-
-/** Back, "Day 14 of 31" (or the dates), DEMO and up to 3 flags over the trip's name in the display face, and the trip's menu. */
+/**
+ * Back, "Day 14 of 31" (or the dates), DEMO and up to 3 flags over the trip's name in the display face, and the trip's
+ * menu. No ✦ here since Android 1.22.0: the AI chat is the Plan's Chat, beside Add.
+ */
 @Composable
 private fun TripHeader(
     trip: Trip, flags: List<String>, today: LocalDate, onBack: () -> Unit, onEdit: () -> Unit, onDelete: () -> Unit, menuAtStart: Boolean,
-    onAddFromLink: () -> Unit, onCalendar: () -> Unit, onShare: () -> Unit, onBook: () -> Unit, onPlanWithAi: () -> Unit,
-    onClip: () -> Unit,
+    onAddFromLink: () -> Unit, onCalendar: () -> Unit, onShare: () -> Unit, onBook: () -> Unit,
+    onClip: () -> Unit, onPostToCommunity: () -> Unit, onPost: (() -> Unit)?,
 ) {
     var menuOpen by remember { mutableStateOf(menuAtStart) }
     Row(
@@ -600,8 +599,7 @@ private fun TripHeader(
             }
             Text(Bt.text.display(trip.title), style = Bt.text.h2, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
-        // The AI planner on this trip.
-        BtIconButton(BtIcons.Sparkle, "Plan with AI", onPlanWithAi)
+        // The AI chat is the Plan's Chat button, beside Add (Android 1.22.0: the ✦ left the top bar on every tab).
         Box {
             BtIconButton(BtIcons.More, "Trip options", { menuOpen = true })
             DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }, containerColor = Bt.colors.surface) {
@@ -614,6 +612,18 @@ private fun TripHeader(
                     menuOpen = false
                     onAddFromLink()
                 })
+                // Owner, 2026-11-11 (Android): "in 3 dots add post to community second".
+                DropdownMenuItem(text = { Text("Post to community") }, leadingIcon = { Icon(BtIcons.Community, null) }, onClick = {
+                    menuOpen = false
+                    onPostToCommunity()
+                })
+                // The trip's post: update it now (only by hand), open it, stop updating it.
+                if (onPost != null) {
+                    DropdownMenuItem(text = { Text("Community post") }, leadingIcon = { Icon(BtIcons.Share, null) }, onClick = {
+                        menuOpen = false
+                        onPost()
+                    })
+                }
                 // Make a clip opens the trip video, Make a book the book; Share prints and exports the trip.
                 DropdownMenuItem(text = { Text("Make a clip") }, leadingIcon = { Icon(BtIcons.Movie, null) }, onClick = {
                     menuOpen = false

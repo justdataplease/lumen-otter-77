@@ -27,3 +27,7 @@ internal actual fun platformNumberSymbols(tag: String): JavaNumberSymbols {
     val size = (NumberFormat.getIntegerInstance(locale) as? DecimalFormat)?.groupingSize ?: 3
     return JavaNumberSymbols(symbols.decimalSeparator, symbols.groupingSeparator, symbols.zeroDigit, size)
 }
+
+actual fun skeletonDate(skeleton: String, epochDay: Long, tag: String): String =
+    java.time.format.DateTimeFormatter.ofLocalizedPattern(skeleton).withLocale(java.util.Locale.forLanguageTag(tag))
+        .format(java.time.LocalDate.ofEpochDay(epochDay))

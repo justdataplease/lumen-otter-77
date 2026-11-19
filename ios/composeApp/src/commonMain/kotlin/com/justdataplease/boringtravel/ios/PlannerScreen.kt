@@ -227,7 +227,8 @@ private fun Conversation(
             item {
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     if (empty) {
-                        Text(if (chat.isNewTrip) "Make the whole trip with AI" else "Change the trip with AI", style = Bt.text.h2)
+                        // Android 1.22.0: without "with AI" (the screen is the AI planner already).
+                        Text(if (chat.isNewTrip) "Make a new trip" else "Change this trip", style = Bt.text.h2)
                         Text(
                             if (chat.isNewTrip) "Paste your itinerary, booking emails or notes, or just say where and when. The planner sets the dates, every day, the places on the map, times and links. You check it before anything is saved."
                             else "Paste your updated list, or say what to change: dates, times, places, a new stop, something to remove. You check every change before it is saved.",

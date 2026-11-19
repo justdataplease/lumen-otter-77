@@ -259,9 +259,10 @@ open class AccessOrderMap<K, V>(
         map.remove(key)
         map[key] = value
         while (map.isNotEmpty()) {
-            val eldest = map.entries.first()
-            if (!removeEldestEntry(Entry(eldest.key, eldest.value))) break
-            map.remove(eldest.key)
+            // Its key and value copied out first: on Kotlin/Native an entry reads the live map.
+            val (key, value) = map.entries.first().let { it.key to it.value }
+            if (!removeEldestEntry(Entry(key, value))) break
+            map.remove(key)
         }
     }
 

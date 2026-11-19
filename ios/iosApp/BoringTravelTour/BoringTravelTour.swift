@@ -142,7 +142,9 @@ final class BoringTravelTour: XCTestCase {
         // "Save a file" was never found and the Back below never tapped (Mac run of 19 Nov 2026), and since each tab
         // keeps its pages, Me then reopened on Backup & sync and Route tracking's step had nothing to tap. Back is
         // tapped whatever the page showed, so Me is on its first page again.
-        if tap("Me", in: app), tap("Backup & sync", in: app) {
+        // Me's rows sit below the Account card and the theme pickers, off screen (Mac run of 19 Nov 2026, round 24: 02-me
+        // ended at Voice notes), so the page is swiped to the row first ([scrollTap]).
+        if tap("Me", in: app), scrollTap("Backup & sync", in: app) {
             if shows("Last backup", in: app) { snap("11-backup") }
             _ = tap("Back", in: app)
         }
@@ -175,14 +177,30 @@ final class BoringTravelTour: XCTestCase {
                 }
             }
             _ = tap("Back", in: app)
-            // The trip's Plan with AI: the planner's empty chat (nothing is sent, so no model and no network).
-            if tap("Plan with AI", in: app), shows("Change the trip with AI", in: app) {
+            // Android 1.22.0: the planner opens from the Plan's Chat, beside Add (the ✦ left the trip's top bar). Back from
+            // Share returns to the tab the trip was on, Plan (a trip opens on Plan); the bar's Plan is tapped first all the
+            // same, because Chat floats only over the Plan, and the plan's "N days · M items" line (at the top of the
+            // page) says it is there. The planner's empty chat: nothing is sent, so no model and no network. The picture
+            // waits for the trip's ⋮ to go (the screens fade).
+            _ = tap("Plan", in: app)
+            if shows("items", in: app, wait: 10), tap("Chat", in: app), shows("Change this trip", in: app) {
+                gone("Trip options", in: app, wait: 5)
                 snap("13-planner")
                 _ = tap("Back", in: app)
             }
             // The trip's ⋮ › Add from a link: Copy from a link's address before anything is pasted (nothing is read).
             if tap("Trip options", in: app), tap("Add from a link", in: app), shows("Only public pages are read", in: app) {
                 snap("14-copy-link")
+                _ = tap("Back", in: app)
+            }
+            // Round 25: the trip's ⋮ › Post to community opens the composer; in a build without the community's Firebase
+            // ids (CI's) it says "Not in this build", else the sign-in card over What to share (the tour never signs
+            // in). Both are at the top of the page. Nothing is posted and nothing is asked; the picture waits for the
+            // trip's ⋮ to go (the screens fade), then Back returns to the trip.
+            if tap("Trip options", in: app), tap("Post to community", in: app),
+               shows("Not in this build", in: app, wait: 10) || shows("What to share", in: app, wait: 5) {
+                gone("Trip options", in: app, wait: 5)
+                snap("14b-post-to-community")
                 _ = tap("Back", in: app)
             }
         }
@@ -192,7 +210,7 @@ final class BoringTravelTour: XCTestCase {
         _ = tap("Back", in: app)
         _ = tap("Trips", in: app)
         // Me's row reads "Route tracking" over its level, so its label may be both: the first that starts so.
-        if tap("Me", in: app), tapStarting("Route tracking", in: app), shows("For every trip", in: app) {
+        if tap("Me", in: app), scrollTap("Route tracking", prefix: true, in: app), shows("For every trip", in: app) {
             snap("15-route-tracking")
             _ = tap("Back", in: app)
         }
@@ -315,6 +333,40 @@ final class BoringTravelTour: XCTestCase {
             if found.isHittable {
                 found.tap()
                 return true
+            }
+        }
+        return false
+    }
+
+    /// Taps the row labelled `text` (or starting with it, [prefix]) on a page longer than the screen: XCUITest doesn't
+    /// report Compose's controls off screen, so the page is swiped up until the row can be tapped (about six times),
+    /// then down as far (the tab keeps its scroll between visits, so the page may be past it already); false when it never
+    /// shows.
+    private func scrollTap(_ text: String, prefix: Bool = false, in app: XCUIApplication) -> Bool {
+        let format = prefix ? "label BEGINSWITH[c] %@" : "label ==[c] %@"
+        func hittable() -> XCUIElement? {
+            let all = app.descendants(matching: .any).matching(NSPredicate(format: format, text))
+            for index in 0..<all.count {
+                let found = all.element(boundBy: index)
+                if found.exists && found.isHittable { return found }
+            }
+            return nil
+        }
+        // The page as it is first: the row may be on screen already.
+        _ = app.descendants(matching: .any).matching(NSPredicate(format: format, text)).firstMatch.waitForExistence(timeout: 3)
+        if let row = hittable() {
+            row.tap()
+            return true
+        }
+        // Up about six times (to the page's end), then down as far again and more (back past where it started).
+        for (up, times) in [(true, 6), (false, 12)] {
+            for _ in 0..<times {
+                if up { app.swipeUp() } else { app.swipeDown() }
+                Thread.sleep(forTimeInterval: 0.6)
+                if let row = hittable() {
+                    row.tap()
+                    return true
+                }
             }
         }
         return false

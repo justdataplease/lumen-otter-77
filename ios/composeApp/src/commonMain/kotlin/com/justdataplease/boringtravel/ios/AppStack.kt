@@ -177,6 +177,12 @@ object AppRestore {
             is Place.CommunityProfile -> put("p", "communityProfile").also { put("uid", place.uid) }
             is Place.CommunityFollows -> put("p", "communityFollows").also { put("uid", place.uid); put("followers", place.followers) }
             Place.CommunityProfileEdit -> put("p", "communityProfileEdit")
+            is Place.Compose -> put("p", "compose").also {
+                put("trip", place.route.tripId)
+                put("kind", place.route.kind)
+                place.route.clipId?.let { put("clip", it) }
+                place.route.mediaIds?.let { put("media", it) }
+            }
         }
     }
 
@@ -209,6 +215,7 @@ object AppRestore {
             "communityProfile" -> s("uid")?.let(Place::CommunityProfile)
             "communityFollows" -> s("uid")?.let { Place.CommunityFollows(it, (o["followers"] as? JsonPrimitive)?.contentOrNull != "false") }
             "communityProfileEdit" -> Place.CommunityProfileEdit
+            "compose" -> trip()?.let { Place.Compose(CommunityCompose(it, s("kind") ?: "trip", s("clip"), s("media"))) }
             else -> null
         }
     }

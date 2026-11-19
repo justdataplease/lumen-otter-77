@@ -42,8 +42,8 @@
 		     Authentication (its email, name and user id, above and here), and the community's Firestore keeps what the
 		     traveller makes there, shown to other travellers: the profile (username, name, bio, picture), posts and their
 		     trip plans, likes, follows, blocks and reports. All linked to the person, for the community only, never for
-		     tracking; Delete profile and Delete account delete them. (Round 25's posting adds the posts' photos and clips,
-		     which stay in the poster's own Drive, shared by link.) -->
+		     tracking; Delete profile and Delete account delete them. Round 25's posting adds the posts' photos and clips,
+		     below. -->
 		<dict>
 			<key>NSPrivacyCollectedDataType</key>
 			<string>NSPrivacyCollectedDataTypeName</string>
@@ -59,6 +59,23 @@
 		<dict>
 			<key>NSPrivacyCollectedDataType</key>
 			<string>NSPrivacyCollectedDataTypeOtherUserContent</string>
+			<key>NSPrivacyCollectedDataTypeLinked</key>
+			<true/>
+			<key>NSPrivacyCollectedDataTypeTracking</key>
+			<false/>
+			<key>NSPrivacyCollectedDataTypePurposes</key>
+			<array>
+				<string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string>
+			</array>
+		</dict>
+		<!-- Round 25, posting (Android's): a post's photos (1600 px, without their location) and its clip go up to a
+		     link-shared folder in the poster's own Google Drive, BoringTravel/Community, and the post in Firestore names
+		     them, so other travellers see them in the app. Linked to the person, for the community only, never for
+		     tracking, as Android's Play Data safety declares Photos and Videos. Delete post and Delete profile delete them
+		     (their Drive folder too when Drive is connected). -->
+		<dict>
+			<key>NSPrivacyCollectedDataType</key>
+			<string>NSPrivacyCollectedDataTypePhotosorVideos</string>
 			<key>NSPrivacyCollectedDataTypeLinked</key>
 			<true/>
 			<key>NSPrivacyCollectedDataTypeTracking</key>

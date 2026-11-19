@@ -750,6 +750,11 @@ val communityFiles = listOf(
     "ui/community/PostScreen.kt", "ui/community/PostViewModel.kt", "ui/community/CommunitySheets.kt",
     "ui/community/MediaViewer.kt", "ui/community/FollowParts.kt", "ui/community/ProfileScreen.kt",
     "ui/community/FollowListScreen.kt", "ui/community/ProfileEditScreen.kt",
+    // Round 25, posting: the draft's rules, the upload, the trip-to-post links, an update's rules (PostSyncs; postSource
+    // and the PostSync class are cut and written again in community/PostPhone.kt), the composer and its view-model, and
+    // the trip's Community post sheet.
+    "community/PostDraft.kt", "community/PostUploader.kt", "community/PostLinks.kt", "community/PostSync.kt",
+    "ui/community/ComposeScreen.kt", "ui/community/ComposeViewModel.kt", "ui/community/PostSyncSheet.kt",
 )
 
 /*
@@ -777,6 +782,7 @@ val communityRewrites: Map<String, List<Pair<String, String>>> = run {
     val day = to("java.time.LocalDate", "com.justdataplease.boringtravel.time.LocalDate")
     val now = "System.currentTimeMillis()" to "com.justdataplease.boringtravel.time.nowMs()"
     val cut = "its function is cut out on the way in (written again in ui/community/CommunityPhone.kt)."
+    val cutPost = "its function is cut out on the way in (written again in community/PostPhone.kt)."
     mapOf(
         "community/CommunityModel.kt" to listOf(
             to("java.text.NumberFormat", "$c.JavaFormat"), to("java.time.Instant", "$c.Instant"), to("java.time.YearMonth", "$c.yearMonthDay"),
@@ -861,6 +867,70 @@ val communityRewrites: Map<String, List<Pair<String, String>>> = run {
         "ui/community/ProfileScreen.kt" to listOf(toast, context, viewModel, scope, viewModelOf, collect, graph, actions),
         "ui/community/FollowListScreen.kt" to listOf(viewModel, scope, viewModelOf, collect, graph, actions),
         "ui/community/ProfileEditScreen.kt" to listOf(toast, context, viewModel, scope, viewModelOf, collect, graph, actions),
+        // Round 25, posting. The draft: java.io.File and java.time's month by compat's names, the first planned day by
+        // its epoch day (the engine's days order that way).
+        "community/PostDraft.kt" to listOf(
+            to("java.io.File", "$c.File"), to("java.time.format.DateTimeFormatter", "$c.DateTimeFormatter"), to("java.util.Locale", "$c.Locale"),
+            "val first = source.trip.startDate ?: source.liveItems.mapNotNull { it.day }.minOrNull()" to
+                "val first = source.trip.startDate ?: source.liveItems.mapNotNull { it.day }.minByOrNull { it.toEpochDay() }",
+        ),
+        // The upload: compat's File and java.time, the engine's clock, Kotlin's own upper case for the country codes.
+        "community/PostUploader.kt" to listOf(
+            to("java.io.File", "$c.File"), to("java.time.Instant", "$c.Instant"), to("java.time.ZoneId", "$c.ZoneId"),
+            to("java.time.format.DateTimeFormatter", "$c.DateTimeFormatter"), to("java.util.Locale", "$c.Locale"),
+            "    private val now: () -> Long = System::currentTimeMillis," to "    private val now: () -> Long = { com.justdataplease.boringtravel.time.nowMs() },",
+            "it.uppercase(Locale.ROOT)" to "it.uppercase()",
+        ),
+        // The trip-to-post links: one small file under the app's files (MediaFiles: the phone's files, or memory in the
+        // tests), written beside and moved over as Android writes its file; never in a backup.
+        "community/PostLinks.kt" to listOf(
+            to("java.io.File", "com.justdataplease.boringtravel.ios.MediaFiles"),
+            "class PostLinks(private val file: File) {" to "class PostLinks(private val files: MediaFiles, private val path: String = \"community/post-links.json\") {",
+            "@Volatile private var loaded = false" to "@kotlin.concurrent.Volatile private var loaded = false",
+            "_all.value = withContext(Dispatchers.IO) { runCatching { if (file.isFile) decode(file.readText()) else emptyMap() }.getOrDefault(emptyMap()) }" to
+                "_all.value = withContext(Dispatchers.Default) { runCatching { files.read(path)?.let { decode(it.decodeToString()) } ?: emptyMap() }.getOrDefault(emptyMap()) }",
+            "withContext(Dispatchers.IO) { write(now) }" to "withContext(Dispatchers.Default) { write(now) }",
+            "        file.parentFile?.mkdirs()" to "        // MediaFiles.write makes the folder.",
+            "        val tmp = File(file.path + \".tmp\")" to "        val tmp = \"\$path.tmp\"",
+            "        tmp.writeText(encode(links))" to "        files.write(tmp, encode(links).encodeToByteArray())",
+            "        if (!tmp.renameTo(file)) {" to "        if (!files.move(tmp, path)) {",
+            "            file.delete()" to "            files.delete(path)",
+            "            tmp.renameTo(file)" to "            files.move(tmp, path)",
+        ),
+        // An update's rules (PostSyncs) as they are; postSource and the PostSync class reach Android's AppGraph, WorkManager
+        // and files (cut below, written again in community/PostPhone.kt). The fingerprint's SHA-256 is compat's.
+        "community/PostSync.kt" to listOf(
+            gone("android.content.Context", cutPost), gone("androidx.work.WorkManager", cutPost), gone("com.justdataplease.boringtravel.AppGraph", cutPost),
+            gone("com.justdataplease.boringtravel.data.repo.now", cutPost), gone("java.io.File", cutPost), gone("java.io.IOException", cutPost),
+            to("java.security.MessageDigest", "$c.MessageDigest"),
+            "val digest = MessageDigest.getInstance(\"SHA-256\").digest(text.toByteArray(Charsets.UTF_8))" to
+                "val digest = MessageDigest.getInstance(\"SHA-256\").apply { update(text.encodeToByteArray()) }.digest()",
+            "return digest.joinToString(\"\") { \"%02x\".format(it) }.take(32)" to
+                "return digest.joinToString(\"\") { (it.toInt() and 0xFF).toString(16).padStart(2, '0') }.take(32)",
+        ),
+        // The composer: Android's BackHandler as this app's (ios/Back.kt), a clip's picture on the phone through
+        // CommunityPhone.kt's AsyncImage (Coil's there), this app's photos, Drive's connect (CommunityPhone.kt's
+        // rememberDriveConnect), the engine's days and clock; the store a build without Firebase names is the App Store.
+        "ui/community/ComposeScreen.kt" to listOf(
+            to("androidx.activity.compose.BackHandler", "com.justdataplease.boringtravel.ios.BackHandler"), collect, viewModelOf, graph, actions,
+            gone("coil3.compose.AsyncImage", cut), ios("ui.components", "MediaImage"), ios("ui.nav", "CommunityCompose"),
+            gone("com.justdataplease.boringtravel.ui.onboarding.rememberDriveConnect", cut),
+            "\"The community needs the app from Google Play or GitHub.\"" to "\"The community needs the app from the App Store.\"",
+            "val startedAt = remember { System.currentTimeMillis() }" to "val startedAt = remember { com.justdataplease.boringtravel.time.nowMs() }",
+            "Dates.localDate(e.occurredAt, e.zoneId)" to "com.justdataplease.boringtravel.time.localDateAt(e.occurredAt, e.zoneId)",
+            "java.time.Instant.ofEpochMilli(clip.createdAt).atZone(java.time.ZoneId.systemDefault()).toLocalDate()" to
+                "com.justdataplease.boringtravel.time.localDateAt(clip.createdAt, null)",
+        ),
+        // Its view-model: compat's ViewModel, the saved clips as files under the app's files (ios/PostClips), the engine's
+        // clock, this app's route.
+        "ui/community/ComposeViewModel.kt" to listOf(
+            viewModel, scope, graph, ios("ui.nav", "CommunityCompose"),
+            to("com.justdataplease.boringtravel.data.SavedClips", "com.justdataplease.boringtravel.ios.PostClips as SavedClips"),
+            to("com.justdataplease.boringtravel.data.repo.now", "com.justdataplease.boringtravel.time.nowMs as now"),
+            "val clips: SavedClips = SavedClips.of(graph.app)" to "val clips: SavedClips = SavedClips(graph.files)",
+        ),
+        // The trip's Community post sheet: its "5 minutes ago" (Android's DateUtils) is cut and written again.
+        "ui/community/PostSyncSheet.kt" to listOf(gone("android.text.format.DateUtils", cut), graph, actions),
     )
 }
 
@@ -885,6 +955,13 @@ val cuts: Map<String, List<Pair<String, String>>> = mapOf(
     "ui/community/MediaViewer.kt" to listOf(
         "/**\n * A video full screen, with sound: plays at once, a tap pauses or plays." to "\n}\n",
     ),
+    // Round 25: a trip as Post to community sees it and the PostSync class (Android's AppGraph, WorkManager, files:
+    // community/PostPhone.kt here); the sheet's "5 minutes ago" (Android's DateUtils: ui/community/CommunityPhone.kt).
+    "community/PostSync.kt" to listOf(
+        "/** The trip [tripId] as Post to community sees it" to "\n}\n",
+        "/**\n * Trip posts kept in step with their trips (owner, 17 Nov 2026), by hand only" to "\n}\n",
+    ),
+    "ui/community/PostSyncSheet.kt" to listOf("/** \"just now\", \"5 minutes ago\", \"yesterday\". */\nprivate fun ago(" to "\n}\n"),
     // PagePreview (a WebView): ui/book/PagePreview.kt here (WebKit on iPhone, the stand-in on the desktop).
     "ui/book/PageViews.kt" to listOf("@SuppressLint(\"ClickableViewAccessibility\", \"SetJavaScriptEnabled\")\n@Composable\nfun PagePreview(" to "\n}\n"),
     // BookScreen, BookEditor, MakeSheet and Context.findActivity: ios/BookScreen.kt here.
@@ -1263,7 +1340,7 @@ fun rewrite(line: String, rules: List<Pair<String, String>>): String = rules.fol
 val sharedSources = tasks.register<Sync>("sharedSources") {
     into(layout.buildDirectory.dir("sharedSources"))
     // Gradle can't see a change to the rewriting rules; raise this when one changes, so the copy runs again.
-    inputs.property("rules", 32)
+    inputs.property("rules", 33)
     from(androidMain.resolve("java")) {
         sharedFiles.filterNot { it in rewrites }.forEach { include("$pkg/$it") }
     }
@@ -1581,6 +1658,24 @@ val androidCommunityTests: Map<String, List<Pair<String, String>>> = run {
             "import java.util.Locale" to "import com.justdataplease.boringtravel.compat.Locale",
             "java.io.File(\"../firebase/firestore.rules\")" to "java.io.File(\"$rules\")",
         )
+    } + run {
+        // Round 25, posting: the draft's rules, the upload and an update of a trip post. Their File and their uploader's
+        // zone are compat's (PostDraft and PostUploader take compat's here); the links are kept under the app's files
+        // (MediaFiles: in memory here, where Android's test makes a folder).
+        val file = "import java.io.File" to "import com.justdataplease.boringtravel.compat.File"
+        val zone = "import java.time.ZoneOffset" to "import com.justdataplease.boringtravel.compat.ZoneOffset"
+        mapOf(
+            "community/PostDraftTest.kt" to listOf(file, "java.util.Locale.UK" to "com.justdataplease.boringtravel.compat.Locale.UK"),
+            "community/PostUploaderTest.kt" to listOf(file, zone),
+            "community/PostSyncTest.kt" to listOf(
+                file, zone,
+                "        val dir = Files.createTempDirectory(\"links\").toFile()" to "        val files = com.justdataplease.boringtravel.ios.MemoryMediaFiles()",
+                "        val file = File(dir, \"community/post-links.json\")" to "        val file = \"community/post-links.json\"",
+                "PostLinks(file)" to "PostLinks(files, file)",
+                "        assertTrue(file.isFile)" to "        assertTrue(files.read(file) != null)",
+                "        dir.deleteRecursively()" to "        // The files are in memory: nothing to delete.",
+            ),
+        )
     }
 }
 
@@ -1713,7 +1808,7 @@ val androidReferenceSources = tasks.register<Sync>("androidReferenceSources") {
 
 val androidTestSources = tasks.register<Sync>("androidTestSources") {
     into(layout.buildDirectory.dir("androidTests"))
-    inputs.property("rules", 16)
+    inputs.property("rules", 18)
     (androidExportTests + androidAiTests + androidSiteTests + androidClipTests + androidBookTests + androidCommunityTests).forEach { (file, rules) ->
         from(androidMain.parentFile.resolve("test/java/$pkg")) {
             include(file)

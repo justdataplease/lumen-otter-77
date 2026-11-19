@@ -296,6 +296,81 @@ internal fun TripPickerSheet(graph: CommunityGraph, onPick: (String) -> Unit, on
 fun ClipViewer(file: File, onClose: () -> Unit, loop: Boolean = true, controls: Boolean = false) =
     com.justdataplease.boringtravel.ios.ClipViewer(file.path, onClose, loop, controls, fullPath = true)
 
+/**
+ * A picture on this phone (a saved clip's, in the composer), cropped as [contentScale] says: Coil's AsyncImage for a
+ * file there, here the file's bytes read off the main thread and drawn upright at the size it is shown.
+ */
+@Composable
+fun AsyncImage(model: File?, contentDescription: String?, modifier: Modifier = Modifier, contentScale: ContentScale = ContentScale.Fit) {
+    val said = contentDescription
+    BoxWithConstraints(modifier.then(if (said != null) Modifier.semantics { this.contentDescription = said } else Modifier)) {
+        val px = with(LocalDensity.current) { max(maxWidth.toPx(), maxHeight.toPx()).let { if (it.isFinite()) it.roundToInt() else 640 } }
+        var picture by remember(model?.path, px) { mutableStateOf<ImageBitmap?>(null) }
+        LaunchedEffect(model?.path, px) {
+            val file = model ?: return@LaunchedEffect
+            picture = kotlinx.coroutines.withContext(Dispatchers.Default) {
+                runCatching { com.justdataplease.boringtravel.ios.Pictures.decode(file.readBytes(), px) }.getOrNull()
+            }
+        }
+        picture?.let { Image(it, null, Modifier.matchParentSize(), contentScale = contentScale) }
+    }
+}
+
+/**
+ * Connect Drive (the Android app's rememberDriveConnect): Google's page for Drive (the app's account, round 23), then
+ * [onResult] with how it ended. On iPhone the consent is the page itself (Android's NeedsConsent step has no part here).
+ */
+@Composable
+fun rememberDriveConnect(graph: CommunityGraph, onResult: (com.justdataplease.boringtravel.google.DriveStep) -> Unit): () -> Unit {
+    val latest by androidx.compose.runtime.rememberUpdatedState(onResult)
+    val scope = rememberCoroutineScope()
+    return remember(graph, scope) {
+        {
+            scope.launch {
+                val google = graph.google
+                latest(google?.connectDrive() ?: com.justdataplease.boringtravel.google.DriveStep.Failed("Google sign-in isn't set up in this build."))
+            }
+        }
+    }
+}
+
+/**
+ * "just now", "5 minutes ago", "yesterday" (Android's PostSyncSheet: DateUtils.getRelativeTimeSpanString to the minute,
+ * its first letter made small): minutes and hours under a day, then calendar days under a week ("yesterday", "3 days
+ * ago"), then the date with its year ("Nov 12, 2026" in English, in the phone's own order elsewhere).
+ */
+internal fun ago(at: Long): String {
+    val now = com.justdataplease.boringtravel.time.nowMs()
+    if (now - at < MINUTE) return "just now"
+    return relative(at, now).replaceFirstChar { it.lowercase() }
+}
+
+/** Android's DateUtils.getRelativeTimeSpanString(at, now, MINUTE_IN_MILLIS) in English, for a moment in the past. */
+internal fun relative(at: Long, now: Long): String {
+    val d = (now - at).coerceAtLeast(0)
+    fun plural(n: Long, unit: String) = if (n == 1L) "1 $unit ago" else "$n ${unit}s ago"
+    return when {
+        d < HOUR -> plural(d / MINUTE, "minute")
+        d < DAY -> plural(d / HOUR, "hour")
+        d < WEEK -> {
+            val days = com.justdataplease.boringtravel.time.localDateAt(now, null).toEpochDay() -
+                com.justdataplease.boringtravel.time.localDateAt(at, null).toEpochDay()
+            when (days) {
+                0L -> "Today"
+                1L -> "Yesterday"
+                else -> "$days days ago"
+            }
+        }
+        // FORMAT_SHOW_DATE | FORMAT_SHOW_YEAR | FORMAT_ABBREV_MONTH: "Nov 12, 2026" (the phone's own order: "12 Nov 2026").
+        else -> com.justdataplease.boringtravel.compat.skeletonDate("yMMMd", com.justdataplease.boringtravel.time.localDateAt(at, null).toEpochDay())
+    }
+}
+
+private const val MINUTE = 60_000L
+private const val HOUR = 60 * MINUTE
+private const val DAY = 24 * HOUR
+private const val WEEK = 7 * DAY
+
 /** Where the community's questions and problems go (Apple's rule 1.2): the Android app's AboutApp.CONTACT. */
 val COMMUNITY_CONTACT: String get() = AiReport.CONTACT
 

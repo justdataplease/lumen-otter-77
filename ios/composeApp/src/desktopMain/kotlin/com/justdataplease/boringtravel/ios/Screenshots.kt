@@ -155,7 +155,12 @@ fun main(args: Array<String>) {
         accounts(out)
         return
     }
-    // `-PshotsOnly=community`: only the community (round 24).
+    // `-PshotsOnly=posting`: only round 25's posting, profiles and Community profile.
+    if (args.getOrNull(1) == "posting") {
+        postingOnly(out)
+        return
+    }
+    // `-PshotsOnly=community`: only the community (rounds 24 and 25).
     if (args.getOrNull(1) == "community") {
         community(out)
         return

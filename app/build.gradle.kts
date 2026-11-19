@@ -38,8 +38,8 @@ android {
         applicationId = "com.justdataplease.boringtravel"
         minSdk = 29
         targetSdk = 36
-        versionCode = 39
-        versionName = "1.22.0"
+        versionCode = 40
+        versionName = "1.22.1"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("String", "GOOGLE_WEB_CLIENT_ID", "\"$googleWebClientId\"")
         buildConfigField("String", "FIREBASE_PROJECT_ID", buildConfigString(localValue("firebase.projectId", "BORINGTRAVEL_FIREBASE_PROJECT_ID")))

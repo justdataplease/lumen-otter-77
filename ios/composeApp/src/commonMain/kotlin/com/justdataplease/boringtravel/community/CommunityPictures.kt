@@ -123,7 +123,9 @@ class CommunityPictures(
         // Over the limit: the pictures used longest ago go first.
         var total = all.values.sumOf { it.first }
         if (total > DISK_BYTES) {
-            for ((k, v) in all.entries.sortedBy { it.value.second }.toList()) {
+            // Keys and values copied out first: on Kotlin/Native a map's entries read the live map, so an entry kept
+            // past a remove() throws (Mac run of round 24).
+            for ((k, v) in all.entries.map { it.key to it.value }.sortedBy { it.second.second }) {
                 if (total <= DISK_BYTES) break
                 files.delete("$IMAGES/$k")
                 all.remove(k)

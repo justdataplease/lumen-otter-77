@@ -30,6 +30,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateMapOf
@@ -235,6 +236,9 @@ sealed interface Place {
 
     /** Community profile: make or change the signed-in traveller's, their blocked people. No bar. */
     data object CommunityProfileEdit : Place
+
+    /** Post to community (round 25): the composer for a trip ([route]: its trip, what to share). No bar. */
+    data class Compose(val route: CommunityCompose) : Place
 
     companion object {
         val Trips: Place = Home(HomeTab.Trips)
@@ -667,8 +671,23 @@ private fun AppFrame(
     // The community (round 24): its screens are Android's, read in; what they reach of Android's AppGraph and AppActions
     // is this app's (ios/CommunityNav.kt). Writes made without a connection go each time the app comes back.
     val community = com.justdataplease.boringtravel.community.LocalCommunity.current
-    val communityGraph = remember(community, settings, book, google) {
-        community?.let { CommunityGraph(it, CommunitySettings(settings), CommunityTrips(book, onNewOwnTrip = { leaveDemo() }, changed = changed), google) }
+    val worldSource = LocalWorld.current
+    val savedClipsHere = LocalSavedClips.current
+    val appScopeHere = LocalAppScope.current
+    val work = LocalBackgroundWork.current
+    // Posting (round 25) reads the app's photos and saved clips, and keeps the trip-to-post links under its files.
+    remember(community, media, book, work) { community?.usePhone(media.files, media.frames, { id -> book.media(id) }, work) }
+    val communityGraph = remember(community, settings, book, google, media) {
+        community?.let {
+            CommunityGraph(
+                it, CommunitySettings(settings),
+                CommunityTrips(
+                    book, onNewOwnTrip = { leaveDemo() }, changed = changed, world = worldSource,
+                    clips = { savedClipsHere?.listNow().orEmpty() }, demoMode = { settings.demoMode },
+                ),
+                google, media.files, appScopeHere ?: scope,
+            )
+        }
     }
     val communityActions = CommunityActions(
         goBack = ::back, open = ::open, top = { stack.entries.lastOrNull()?.place },
@@ -900,6 +919,7 @@ private fun Screen(
             HomeTab.Me -> MeScreen(
                 settings, version, onDemo = a.setDemo, onImportFromLink = { a.open(Place.CopySite()) }, onBackup = { a.open(Place.Backup) },
                 onAi = { a.open(Place.AiSettings) }, onTracking = { a.open(Place.Tracking) },
+                onCommunityProfile = { a.communityActions?.editCommunityProfile() },
             )
         }
         Place.LooseNotes -> LooseNotesScreen(book, revision, onBack = a.back, onOpenNote = { a.open(Place.Note(null, it)) })
@@ -952,12 +972,15 @@ private fun Screen(
             onWriteNote = { entryId -> a.open(Place.Write(place.tripId, entryId)) },
             onShare = { a.open(Place.Share(place.tripId)) },
             onSay = a.say,
-            onPlanWithAi = { a.open(Place.Planner(place.tripId)) },
+            onChat = { a.open(Place.Planner(place.tripId)) },
             onClip = { a.open(Place.Clip(place.tripId)) },
             // The Media tab's Add media: a new note with the photo library open (Android's write with attachPhotos).
             onAddMedia = { a.open(Place.Write(place.tripId, pick = true)) },
             onBook = { a.open(Place.Book(place.tripId)) },
             onWriteAbout = { itemId -> a.open(Place.Write(place.tripId, planItemId = itemId)) },
+            // Round 25: Post to community, and the trip's Community post when this phone posted it (Android's TripScreen).
+            onPostToCommunity = { a.communityActions?.postToCommunity(place.tripId) },
+            postSheet = postSheetOf(a, place.tripId),
         )
         // The book (round 21): photos brought in from the phone join the trip, so the trip's screens read it again.
         is Place.Book -> BookScreen(book, place.tripId, settings, onBack = a.back, onChanged = a.changed)
@@ -966,6 +989,8 @@ private fun Screen(
         is Place.CommunityProfile -> communityPage(a) { g, acts -> com.justdataplease.boringtravel.ui.community.ProfileScreen(g, acts, place.uid) }
         is Place.CommunityFollows -> communityPage(a) { g, acts -> com.justdataplease.boringtravel.ui.community.FollowListScreen(g, acts, place.uid, place.followers) }
         Place.CommunityProfileEdit -> communityPage(a) { g, acts -> com.justdataplease.boringtravel.ui.community.ProfileEditScreen(g, acts) }
+        // Post to community (round 25): the Android app's own composer, read in.
+        is Place.Compose -> communityPage(a) { g, acts -> com.justdataplease.boringtravel.ui.community.ComposeScreen(g, acts, place.route) }
         is Place.Clip -> ClipScreen(
             book, place.tripId, settings,
             onBack = a.back,
@@ -1061,6 +1086,19 @@ private fun Screen(
             photoDefaults = { trip -> PhotoDefaults.of(settings.tripPhotoStyles.of(trip)) },
         )
     }
+}
+
+/**
+ * The trip's Community post sheet (Android's PostSyncSheet, read in) when this phone posted trip [tripId] and keeps it
+ * linked to its post (the links stay on this phone); null otherwise, and the trip's ⋮ has no Community post.
+ */
+@Composable
+private fun postSheetOf(a: Actions, tripId: String): (@Composable (onClose: () -> Unit) -> Unit)? {
+    val g = a.community ?: return null
+    val acts = a.communityActions ?: return null
+    val links by g.postSync.links.all.collectAsState()
+    if (links[tripId] == null) return null
+    return { onClose -> com.justdataplease.boringtravel.ui.community.PostSyncSheet(g, acts, tripId, onClose) }
 }
 
 /** A community page with the app's community and its buttons; nothing where the app has none. */

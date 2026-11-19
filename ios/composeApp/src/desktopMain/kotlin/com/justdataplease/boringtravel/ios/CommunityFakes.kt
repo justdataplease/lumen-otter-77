@@ -16,12 +16,17 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.put
 
 /*
- * Cloud Firestore in memory, for the tests and the pictures (round 24): nothing here reaches the network. [FakeFirestore]
- * answers the REST API as Firestore does (documents read, structured queries with filters, orders, cursors and limits,
- * collection groups, counts, commits with server times and increments, transactions) and holds the writes to the owner's
- * rules as far as the app's community meets them (android-boringtravel/firebase/firestore.rules: only as yourself, a like
- * with its count by one and never on your own post, a username claimed once, follows with both halves and never across a
- * block, reports and blocks as yourself, likes read only by who gave them). Names and addresses are made up.
+ * Cloud Firestore in memory, for the tests and the pictures (rounds 24 and 25): nothing here reaches the network.
+ * [FakeFirestore] answers the REST API as Firestore does (documents read, structured queries with filters, orders,
+ * cursors and limits, collection groups, counts, commits with server times and increments, transactions) and holds the
+ * writes to the owner's rules as far as the app's community meets them (android-boringtravel/firebase/firestore.rules):
+ * only as yourself, a like with its count by one and never on your own post, a username claimed once with the profile
+ * naming it and let go only with the profile, a profile's fields and sizes (name 40, bio 150, a username's letters and
+ * the reserved names), a post's fields and sizes (title 1-80, caption 500, 30 countries, 0-400 days, 30 photos, Drive
+ * ids, a clip's file, an album's photo) under your own username with no likes in this month, the poster's edits only of
+ * what a kept-in-step post may change, a post's trip only beside a post that has one, follows with both halves and never
+ * across a block, reports and blocks as yourself with their fields, likes read only by who gave them, and the server's
+ * time where the rules ask for request.time. Names and addresses are made up.
  */
 
 /** The community's documents by path ("posts/abc"), each field a plain value (as [FsValues.decode] gives them). */
@@ -274,34 +279,68 @@ class FakeFirestore(private val project: String = "test-project") {
             touched += path
         }
         for (w in writes) if (refuse?.invoke(uid, w) == true) return denied(c)
-        if (uid != null) rules(uid, touched, after)?.let { return denied(c, it) }
+        if (uid != null) rules(uid, touched, after, now)?.let { return denied(c, it) }
         commits += writes
         docs.clear()
         docs.putAll(after)
         return ok(c, buildJsonObject { put("commitTime", now.text) })
     }
 
-    /** The owner's rules for each document a commit touches; why it is refused, or null. */
-    private fun rules(uid: String, touched: Set<String>, after: Map<String, Map<String, Any?>>): String? {
+    /**
+     * The owner's rules for each document a commit touches; why it is refused, or null. [time] is the commit's own
+     * (request.time); a post's month is checked against the wall clock, as the phone and Firestore's clock agree.
+     */
+    private fun rules(uid: String, touched: Set<String>, after: Map<String, Map<String, Any?>>, time: FsTime): String? {
         for (path in touched) {
             val p = path.split('/')
             val before = docs[path]
             val now = after[path]
             when {
-                p[0] == "profiles" && p.size == 2 -> if (p[1] != uid) return "Only your own profile"
+                p[0] == "profiles" && p.size == 2 -> {
+                    if (p[1] != uid) return "Only your own profile"
+                    if (now == null) {
+                        if (after.containsKey("usernames/${before?.get("username")}")) return "A profile goes with its username"
+                    } else {
+                        validProfile(now)?.let { return it }
+                        if (now["updatedAt"] != time) return "A profile's updatedAt is the server's time"
+                        if (before == null && now["createdAt"] != time) return "A new profile's createdAt is the server's time"
+                        if (before != null && now["createdAt"] != before["createdAt"]) return "A profile keeps its createdAt"
+                        if (after["usernames/${now["username"]}"]?.get("uid") != uid) return "A profile's username is claimed with it"
+                        if (before != null && before["username"] != now["username"] && after.containsKey("usernames/${before["username"]}")) {
+                            return "A new username lets the old one go"
+                        }
+                    }
+                }
                 p[0] == "usernames" && p.size == 2 -> {
                     if (now != null && before != null) return "A username is claimed once"
+                    if (now != null && !validUsername(p[1])) return "Not a username"
+                    if (now != null && now.keys != setOf("uid")) return "A username holds its uid only"
                     if (now != null && now["uid"] != uid) return "Only as yourself"
                     if (now != null && after["profiles/$uid"]?.get("username") != p[1]) return "Only with the profile naming it"
                     if (now == null && before?.get("uid") != uid) return "Only its holder lets it go"
+                    if (now == null && after["profiles/$uid"]?.get("username") == p[1]) return "Let go only when the profile goes or names another"
                 }
                 p[0] == "posts" && p.size == 2 -> {
                     val owner = (before ?: now)?.get("uid")
                     if (before == null && now != null) {
                         if (now["uid"] != uid || now["likes"] != 0L) return "Posts only as yourself, with no likes"
+                        if (!Regex("[A-Za-z0-9_-]{1,64}").matches(p[1])) return "A post's id"
+                        validPost(now)?.let { return it }
+                        if (now["createdAt"] != time || now["updatedAt"] != time) return "A post's times are the server's"
+                        if (now["username"] != docs["profiles/$uid"]?.get("username")) return "A post under your own username"
+                        if (!recentMonth(now["month"] as? String)) return "A post's month is this month"
                     } else if (now == null) {
                         if (owner != uid) return "Only its poster deletes a post"
-                    } else if (owner != uid) {
+                    } else if (owner == uid) {
+                        // The poster's edit: the words, the username after a rename, what a kept-in-step trip now holds.
+                        val changed = (before!!.keys + now.keys).filter { before[it] != now[it] }
+                        val allowed = setOf("title", "caption", "username", "updatedAt", "countries", "days", "km", "startMonth", "coverFileId", "photoFileIds", "folderId")
+                        changed.firstOrNull { it !in allowed }?.let { return "The poster doesn't change $it" }
+                        if (now["folderId"] != before["folderId"] && before["folderId"] != null) return "A post keeps its folder"
+                        validPost(now)?.let { return it }
+                        if (now["updatedAt"] != time) return "A post's updatedAt is the server's time"
+                        if (now["username"] != after["profiles/$uid"]?.get("username")) return "A post under your own username"
+                    } else {
                         // Someone else's like: only the count moves by one, with their like appearing or going.
                         val changed = (before!!.keys + now.keys).filter { before[it] != now[it] }
                         if (changed.any { it != "likes" }) return "Only the likes change"
@@ -320,8 +359,31 @@ class FakeFirestore(private val project: String = "test-project") {
                         if (now == null && before != null && delta != -1L) return "An unlike takes one off"
                     }
                 }
-                p[0] == "reports" -> if (now == null || now["uid"] != uid) return "Reports only as yourself"
-                p.size == 4 && p[0] == "users" && p[2] == "blocked" -> if (p[1] != uid || p[3] == uid) return "Only your own blocks"
+                // A post's trip, beside a post that has one, by its poster; gone with the post.
+                p.size == 4 && p[0] == "posts" && p[2] == "content" -> {
+                    if (now == null) {
+                        if (after.containsKey("posts/${p[1]}")) return "A post's trip goes with the post"
+                    } else {
+                        val post = after["posts/${p[1]}"]
+                        if (p[3] != "trip" || post?.get("uid") != uid || post["hasTrip"] != true) return "Only the poster's trip, beside a post that has one"
+                        if (now.keys != setOf("trip") || (now["trip"] as? String)?.let { it.length <= 300_000 } != true) return "A trip of 300,000 characters at most"
+                    }
+                }
+                p[0] == "reports" -> {
+                    if (now == null || now["uid"] != uid) return "Reports only as yourself"
+                    if (now.keys != setOf("postId", "target", "uid", "reason", "at")) return "A report's fields"
+                    val postId = now["postId"]
+                    if (postId != null && (postId !is String || !Regex("[A-Za-z0-9_-]{1,64}").matches(postId))) return "A report's post"
+                    if ((now["target"] as? String)?.length !in 1..128) return "A report's target"
+                    if (now["reason"] !in listOf("spam", "inappropriate", "hate", "other")) return "A report's reason"
+                    if (now["at"] != time) return "A report's time is the server's"
+                }
+                p.size == 4 && p[0] == "users" && p[2] == "blocked" -> {
+                    if (p[1] != uid || p[3] == uid) return "Only your own blocks"
+                    if (now != null && (now.keys != setOf("username", "at") || (now["username"] as? String)?.let { it.length <= 20 } != true || now["at"] != time)) {
+                        return "A block's fields"
+                    }
+                }
                 p.size == 4 && p[0] == "users" && (p[2] == "following" || p[2] == "followers") -> {
                     val (follower, followed) = if (p[2] == "following") p[1] to p[3] else p[3] to p[1]
                     if (now == null) {
@@ -330,6 +392,7 @@ class FakeFirestore(private val project: String = "test-project") {
                         if (follower != uid || follower == followed) return "Follows only as yourself"
                         if (docs.containsKey("users/$follower/blocked/$followed") || docs.containsKey("users/$followed/blocked/$follower")) return "No follow across a block"
                         val named = if (p[2] == "following") followed else follower
+                        if (now.keys != setOf("username", "at") || now["at"] != time) return "A follow's fields"
                         if (now["username"] != docs["profiles/$named"]?.get("username")) return "The username the profile has"
                         val other = if (p[2] == "following") "users/$followed/followers/$follower" else "users/$follower/following/$followed"
                         if (!after.containsKey(other)) return "Both halves together"
@@ -338,6 +401,59 @@ class FakeFirestore(private val project: String = "test-project") {
             }
         }
         return null
+    }
+
+    /** The rules' validProfile: exactly its fields, a username, a name of 40 and a bio of 150 at most, a picture of 2,000. */
+    private fun validProfile(d: Map<String, Any?>): String? = when {
+        d.keys != setOf("username", "name", "bio", "avatar", "createdAt", "updatedAt") -> "A profile's fields"
+        !validUsername(d["username"] as? String) -> "Not a username"
+        (d["name"] as? String)?.let { it.length <= 40 } != true -> "A name of 40 characters at most"
+        (d["bio"] as? String)?.let { it.length <= 150 } != true -> "A bio of 150 characters at most"
+        d["avatar"] != null && (d["avatar"] as? String)?.let { it.length <= 2000 } != true -> "A picture of 2,000 characters at most"
+        d["createdAt"] !is FsTime || d["updatedAt"] !is FsTime -> "A profile's times"
+        else -> null
+    }
+
+    /** The rules' validPost: exactly its fields, each of its type and size. */
+    private fun validPost(d: Map<String, Any?>): String? {
+        val keys = setOf(
+            "uid", "username", "kind", "title", "caption", "countries", "days", "km", "startMonth", "month",
+            "coverFileId", "photoFileIds", "clipFileId", "folderId", "hasTrip", "likes", "createdAt", "updatedAt",
+        )
+        fun fileId(v: Any?) = v is String && Regex("[A-Za-z0-9_-]{5,200}").matches(v)
+        val photos = d["photoFileIds"] as? List<*>
+        val countries = d["countries"] as? List<*>
+        return when {
+            d.keys != keys -> "A post's fields: ${(d.keys - keys) + (keys - d.keys)}"
+            d["uid"] !is String -> "A post's uid"
+            !validUsername(d["username"] as? String) -> "A post's username"
+            d["kind"] !in listOf("trip", "clip", "album") -> "A post's kind"
+            (d["title"] as? String)?.length !in 1..80 -> "A title of 1 to 80 characters"
+            (d["caption"] as? String)?.let { it.length <= 500 } != true -> "A caption of 500 characters at most"
+            countries == null || countries.size > 30 || countries.any { it !is String || !Regex("[A-Z]{2}").matches(it) } -> "Up to 30 countries"
+            (d["days"] as? Long)?.let { it in 0..400 } != true -> "0 to 400 days"
+            (d["km"] as? Long)?.let { it in 0..100_000 } != true -> "0 to 100,000 km"
+            d["startMonth"] != null && (d["startMonth"] as? String)?.let { Regex("[0-9]{4}-[0-9]{2}").matches(it) } != true -> "A first month"
+            (d["month"] as? String)?.let { Regex("[0-9]{4}-[0-9]{2}").matches(it) } != true -> "A month"
+            d["coverFileId"] != null && !fileId(d["coverFileId"]) -> "A cover's Drive id"
+            photos == null || photos.size > 30 || photos.any { !fileId(it) } -> "Up to 30 photos by their Drive ids"
+            d["clipFileId"] != null && !fileId(d["clipFileId"]) -> "A clip's Drive id"
+            d["kind"] == "clip" && d["clipFileId"] == null -> "A clip post has its clip"
+            d["kind"] == "album" && photos.isEmpty() -> "An album has a photo"
+            d["folderId"] != null && !fileId(d["folderId"]) -> "A folder's Drive id"
+            d["hasTrip"] !is Boolean -> "hasTrip"
+            (d["likes"] as? Long)?.let { it >= 0 } != true -> "Likes"
+            d["createdAt"] !is FsTime || d["updatedAt"] !is FsTime -> "A post's times"
+            else -> null
+        }
+    }
+
+    /** The rules' month: this month by the clock, a day either way for phones near midnight. */
+    private fun recentMonth(m: String?): Boolean {
+        if (m == null || !Regex("[0-9]{4}-[0-9]{2}").matches(m)) return false
+        val wall = System.currentTimeMillis()
+        val day = 86_400_000L
+        return listOf(wall - day, wall, wall + day).any { FsValues.formatTime(it).take(7) == m }
     }
 
     private fun ok(c: FakeCall, body: JsonObject) = NetAnswer(200, c.url, mapOf("Content-Type" to "application/json"), body.toString().encodeToByteArray())
@@ -352,6 +468,16 @@ class FakeFirestore(private val project: String = "test-project") {
     @Suppress("unused")
     private val nothing = JsonNull
 }
+
+/** The rules' validUsername (community/Usernames.kt): 3-20 of a-z 0-9 _ . ; no dot at either end, no two in a row, not reserved. */
+fun validUsername(n: String?): Boolean = n != null && n.length in 3..20 && Regex("[a-z0-9_]([a-z0-9_.]*[a-z0-9_])?").matches(n) && ".." !in n && n !in RESERVED_NAMES
+
+/** The rules' reservedNames(). */
+val RESERVED_NAMES = setOf(
+    "admin", "administrator", "boringtravel", "boring.travel", "boring_travel", "justdataplease", "support", "help", "moderator",
+    "mod", "mods", "staff", "official", "team", "system", "root", "null", "undefined", "anonymous", "community", "everyone",
+    "settings", "privacy", "terms", "about", "google", "firebase", "android", "api", "app", "me", "you",
+)
 
 /** Made-up community people for the tests and the pictures (handles only, no person's name). */
 object CommunityPeople {

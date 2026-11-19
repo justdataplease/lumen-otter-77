@@ -24,6 +24,13 @@ expect fun setPhoneLanguage(tag: String?)
 /** [pattern] (java.time's letters) for day [epochDay] at [minuteOfDay], as java.time writes it in language [tag]. */
 internal expect fun platformDate(pattern: String, epochDay: Long, minuteOfDay: Int, tag: String): String
 
+/**
+ * Day [epochDay] written from a CLDR skeleton ("yMMMd") in language [tag], in that language's own order, as Android's
+ * DateUtils writes a date (ICU's skeletons): "Nov 12, 2026" in English (US), "12 Nov 2026" in English (UK). iPhone:
+ * NSDateFormatter's localized template; the desktop: java.time's localized pattern (Java 19+), the same CLDR data.
+ */
+expect fun skeletonDate(skeleton: String, epochDay: Long, tag: String = phoneLanguageTag()): String
+
 /** The separators, zero digit and group size Java's Formatter writes numbers with in language [tag]. */
 internal expect fun platformNumberSymbols(tag: String): JavaNumberSymbols
 

@@ -10,7 +10,11 @@ import com.justdataplease.boringtravel.community.FollowLink
 import com.justdataplease.boringtravel.community.ReportReason
 import com.justdataplease.boringtravel.community.TopRange
 import com.justdataplease.boringtravel.community.UsernameTakenException
+import com.justdataplease.boringtravel.firebase.FirestoreException
+import com.justdataplease.boringtravel.firebase.FirestoreRest
 import com.justdataplease.boringtravel.firebase.FsTime
+import com.justdataplease.boringtravel.firebase.FsWrites
+import com.justdataplease.boringtravel.firebase.ServerTime
 import com.justdataplease.boringtravel.google.PublicDrive
 import com.justdataplease.boringtravel.ui.nav.HomeTab
 import com.justdataplease.boringtravel.ui.nav.TripTab
@@ -286,5 +290,122 @@ class FirestoreCommunityOnDesktopTest {
         )
         val saved = assertNotNull(AppRestore.decode(AppRestore.encode(stack, TripTab.entries.first(), null, emptyMap()), book))
         assertEquals(stack.entries.map { it.place }, saved.stack)
+        // Round 25: the composer comes back with its trip and what it shares.
+        val tripId = book.trips().first().id
+        val compose = AppStack(listOf(Place.Trips, Place.Trip(tripId), Place.Compose(CommunityCompose(tripId, "album", mediaIds = "m1,m2"))))
+        assertEquals(compose.entries.map { it.place }, assertNotNull(AppRestore.decode(AppRestore.encode(compose, TripTab.entries.first(), null, emptyMap()), book)).stack)
+    }
+
+    // ------------------------------------------------------------------ round 25: the owner's rules on what posting writes
+
+    /** Firestore's REST API as [uid], straight (what a phone that isn't the app could send). */
+    private fun rest(world: CommunityWorld, uid: String = me): FirestoreRest {
+        val token = world.cloud.firebaseToken(uid)
+        return FirestoreRest(world.cloud, CommunityWorld.FIREBASE.projectId, { token }, com.justdataplease.boringtravel.ai.AppCheckTokens { null })
+    }
+
+    /** A post as the app writes one ([FirestoreCommunity.createPost]), [change]d. */
+    private fun post(change: MutableMap<String, Any?>.() -> Unit = {}): Map<String, Any?> = linkedMapOf<String, Any?>(
+        "uid" to me, "username" to CommunityPeople.ME_NAME, "kind" to "album", "title" to "Paros", "caption" to "", "countries" to listOf("GR"),
+        "days" to 3, "km" to 40, "startMonth" to "2026-10", "month" to com.justdataplease.boringtravel.community.PostText.monthKey(com.justdataplease.boringtravel.time.nowMs()),
+        "coverFileId" to "drvPhoto0001", "photoFileIds" to listOf("drvPhoto0001"), "clipFileId" to null, "folderId" to "drvFolder001",
+        "hasTrip" to false, "likes" to 0, "createdAt" to ServerTime, "updatedAt" to ServerTime,
+    ).apply(change)
+
+    private suspend fun refused(fs: FirestoreRest, vararg writes: kotlinx.serialization.json.JsonObject) {
+        val e = assertFailsWith<FirestoreException> { fs.commit(writes.toList()) }
+        assertEquals("PERMISSION_DENIED", e.status)
+    }
+
+    @Test fun postsAreHeldToTheirFieldsAndSizes() = runBlocking<Unit> {
+        val (world, _, _) = signedIn()
+        val fs = rest(world)
+        fun at(id: String) = fs.name("posts/$id")
+        fs.commit(listOf(FsWrites.set(at("pOk1"), post())))
+        assertEquals("Paros", world.fs.docs["posts/pOk1"]?.get("title"))
+        refused(fs, FsWrites.set(at("pLong"), post { put("title", "T".repeat(81)) }))
+        refused(fs, FsWrites.set(at("pEmpty"), post { put("title", "") }))
+        refused(fs, FsWrites.set(at("pCaption"), post { put("caption", "C".repeat(501)) }))
+        refused(fs, FsWrites.set(at("pPhotos"), post { put("photoFileIds", (1..31).map { "drvPhoto${it.toString().padStart(4, '0')}" }) }))
+        refused(fs, FsWrites.set(at("pCountries"), post { put("countries", (1..31).map { "G${'A' + it % 26}" }) }))
+        refused(fs, FsWrites.set(at("pDays"), post { put("days", 401) }))
+        refused(fs, FsWrites.set(at("pLikes"), post { put("likes", 3) }))
+        refused(fs, FsWrites.set(at("pName"), post { put("username", CommunityPeople.OTHER_NAME) }))
+        refused(fs, FsWrites.set(at("pAs"), post { put("uid", other) }))
+        refused(fs, FsWrites.set(at("pAlbum"), post { put("photoFileIds", emptyList<String>()); put("coverFileId", null) }))
+        refused(fs, FsWrites.set(at("pClip"), post { put("kind", "clip") }))
+        refused(fs, FsWrites.set(at("pDrive"), post { put("coverFileId", "not a drive id") }))
+        refused(fs, FsWrites.set(at("pMonth"), post { put("month", "2019-01") }))
+        refused(fs, FsWrites.set(at("pField"), post { put("extra", true) }))
+        // The poster changes the words and what a kept-in-step trip holds; never the likes, the kind or the month.
+        fs.commit(listOf(FsWrites.update(at("pOk1"), mapOf("title" to "Paros again", "updatedAt" to ServerTime))))
+        refused(fs, FsWrites.update(at("pOk1"), mapOf("likes" to 9, "updatedAt" to ServerTime)))
+        refused(fs, FsWrites.update(at("pOk1"), mapOf("kind" to "trip", "updatedAt" to ServerTime)))
+        refused(fs, FsWrites.update(at("pOk1"), mapOf("folderId" to "drvOtherFolder", "updatedAt" to ServerTime)))
+        // Someone else's post: nobody else edits or deletes it.
+        refused(fs, FsWrites.update(at(patagonia), mapOf("title" to "Mine now", "updatedAt" to ServerTime)))
+        refused(fs, FsWrites.delete(at(patagonia)))
+    }
+
+    @Test fun aPostsTripGoesOnlyBesideAPostThatHasOne() = runBlocking<Unit> {
+        val (world, _, _) = signedIn()
+        val fs = rest(world)
+        fs.commit(listOf(FsWrites.set(fs.name("posts/pAlbum1"), post())))
+        refused(fs, FsWrites.set(fs.name("posts/pAlbum1/content/trip"), mapOf("trip" to "{}")))
+        refused(fs, FsWrites.set(fs.name("posts/$patagonia/content/trip"), mapOf("trip" to "{}")))
+        fs.commit(listOf(
+            FsWrites.set(fs.name("posts/pTrip1"), post { put("kind", "trip"); put("hasTrip", true) }),
+            FsWrites.set(fs.name("posts/pTrip1/content/trip"), mapOf("trip" to "{\"days\":3}")),
+        ))
+        refused(fs, FsWrites.set(fs.name("posts/pTrip1/content/trip"), mapOf("trip" to "x".repeat(300_001))))
+        // The trip goes with its post.
+        refused(fs, FsWrites.delete(fs.name("posts/pTrip1/content/trip")))
+        fs.commit(listOf(FsWrites.delete(fs.name("posts/pTrip1")), FsWrites.delete(fs.name("posts/pTrip1/content/trip"))))
+        assertFalse(world.fs.docs.containsKey("posts/pTrip1/content/trip"))
+    }
+
+    @Test fun profilesAreHeldToTheirFieldsAndUsernamesToTheirRules() = runBlocking<Unit> {
+        val (world, _, _) = signedIn(mine = false)
+        val fs = rest(world)
+        fun profile(name: String, change: MutableMap<String, Any?>.() -> Unit = {}) =
+            linkedMapOf<String, Any?>("username" to name, "name" to "", "bio" to "", "avatar" to null, "createdAt" to ServerTime, "updatedAt" to ServerTime).apply(change)
+        fun claim(name: String, change: MutableMap<String, Any?>.() -> Unit = {}) =
+            arrayOf(FsWrites.set(fs.name("profiles/$me"), profile(name, change)), FsWrites.set(fs.name("usernames/$name"), mapOf("uid" to me)))
+        refused(fs, *claim("admin"))
+        refused(fs, *claim("ab"))
+        refused(fs, *claim("Upper"))
+        refused(fs, *claim("two..dots"))
+        refused(fs, *claim(".dot"))
+        refused(fs, *claim("islands") { put("name", "N".repeat(41)) })
+        refused(fs, *claim("islands") { put("bio", "B".repeat(151)) })
+        refused(fs, *claim("islands") { put("avatar", "a".repeat(2001)) })
+        // A profile without its username, a username without its profile, someone else's.
+        refused(fs, FsWrites.set(fs.name("profiles/$me"), profile("islands")))
+        refused(fs, FsWrites.set(fs.name("usernames/islands"), mapOf("uid" to me)))
+        refused(fs, *claim(CommunityPeople.OTHER_NAME))
+        fs.commit(claim("islands").toList())
+        assertEquals("islands", world.fs.docs["profiles/$me"]?.get("username"))
+        // Another's username can't be let go; one's own only with the profile going or naming another.
+        refused(fs, FsWrites.delete(fs.name("usernames/${CommunityPeople.OTHER_NAME}")))
+        refused(fs, FsWrites.delete(fs.name("usernames/islands")))
+        refused(fs, FsWrites.delete(fs.name("profiles/$me")))
+        fs.commit(listOf(FsWrites.delete(fs.name("profiles/$me")), FsWrites.delete(fs.name("usernames/islands"))))
+        assertFalse(world.fs.docs.containsKey("profiles/$me"))
+    }
+
+    @Test fun reportsAndBlocksAreHeldToTheirFields() = runBlocking<Unit> {
+        val (world, _, _) = signedIn()
+        val fs = rest(world)
+        fun report(change: MutableMap<String, Any?>.() -> Unit = {}) =
+            linkedMapOf<String, Any?>("postId" to patagonia, "target" to other, "uid" to me, "reason" to "spam", "at" to ServerTime).apply(change)
+        fs.commit(listOf(FsWrites.set(fs.name("reports/r1"), report())))
+        refused(fs, FsWrites.set(fs.name("reports/r2"), report { put("reason", "boring") }))
+        refused(fs, FsWrites.set(fs.name("reports/r3"), report { put("uid", other) }))
+        refused(fs, FsWrites.set(fs.name("reports/r4"), report { put("target", "") }))
+        refused(fs, FsWrites.set(fs.name("reports/r5"), report { put("postId", "no/such") }))
+        refused(fs, FsWrites.set(fs.name("users/$me/blocked/$other"), mapOf("username" to "x".repeat(21), "at" to ServerTime)))
+        refused(fs, FsWrites.set(fs.name("users/$me/blocked/$me"), mapOf("username" to CommunityPeople.ME_NAME, "at" to ServerTime)))
+        fs.commit(listOf(FsWrites.set(fs.name("users/$me/blocked/$other"), mapOf("username" to CommunityPeople.OTHER_NAME, "at" to ServerTime))))
+        assertTrue(world.fs.docs.containsKey("users/$me/blocked/$other"))
     }
 }

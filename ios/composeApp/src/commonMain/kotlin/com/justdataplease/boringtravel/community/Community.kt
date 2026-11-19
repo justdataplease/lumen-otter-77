@@ -25,8 +25,10 @@ import kotlinx.coroutines.withTimeoutOrNull
  * ([FirestoreCommunity]) where Android uses the SDK.
  *
  * Without Firebase ids in the build [available] is false and the Community tab says so. [scope] is the app's own (the
- * hearts and follows go on after a screen closes); [driveConnected] and [drive] are the app's Drive, where a post's
- * folder is deleted from (round 25 posts).
+ * hearts and follows go on after a screen closes); [driveConnected] and [deleteDriveFile] are the app's Drive, where a
+ * post's folder is deleted from; [drive] is the app's Drive client a post's photos and clip go up with (round 25).
+ * Posting reads the app's photos and saved clips once the app has handed over its files ([usePhone]), and keeps going
+ * away from the screen for as long as the phone gives it (BackgroundWork).
  */
 class Community(
     val repo: CommunityRepository,
@@ -36,6 +38,8 @@ class Community(
     private val driveConnected: () -> Boolean = { false },
     /** Deletes a file or folder in the traveller's own Drive (the app's Drive client). */
     private val deleteDriveFile: (suspend (String) -> Unit)? = null,
+    /** The app's Drive client: a post's folder, photos and clip (round 25). */
+    private val drive: () -> com.justdataplease.boringtravel.google.RestDriveApi? = { null },
 ) {
     /** Android's debug builds can use the Firebase emulators; this app's tests use in-memory fakes instead. */
     val usesEmulator: Boolean get() = false
@@ -312,10 +316,108 @@ class Community(
         }
     }
 
-    // ---------------------------------------------------------------- deleting
+    // ---------------------------------------------------------------- Drive
 
     /** The poster's Drive is needed to post (pictures and clips live there). */
     suspend fun driveReady(): Boolean = driveConnected()
+
+    // ---------------------------------------------------------------- posting (round 25)
+
+    /** The app's photos and saved clips, as the app hands them over ([usePhone]). */
+    private class Phone(
+        val files: com.justdataplease.boringtravel.ios.MediaFiles,
+        val frames: com.justdataplease.boringtravel.ios.VideoFrames,
+        val media: (String) -> com.justdataplease.boringtravel.data.db.Media?,
+        val work: com.justdataplease.boringtravel.ios.BackgroundWork,
+    )
+
+    private var phone: Phone? = null
+
+    /**
+     * The trip posts kept in step with their trips, by trip id (Android's PostSync.links): a small file under the app's
+     * files, on this phone only (never in a backup). In memory until the app hands over its files ([usePhone]).
+     */
+    var postLinks: PostLinks = PostLinks(com.justdataplease.boringtravel.ios.MemoryMediaFiles())
+        private set
+
+    /**
+     * The app's side of posting: its [files] (the photos, saved clips and the post links), [frames] (a clip's picture),
+     * a photo's row by id ([media]), and [work] (time asked of the phone while a post goes up away from the screen).
+     */
+    fun usePhone(
+        files: com.justdataplease.boringtravel.ios.MediaFiles,
+        frames: com.justdataplease.boringtravel.ios.VideoFrames,
+        media: (String) -> com.justdataplease.boringtravel.data.db.Media?,
+        work: com.justdataplease.boringtravel.ios.BackgroundWork = com.justdataplease.boringtravel.ios.NoBackgroundWork,
+    ) {
+        if (phone?.files !== files) postLinks = PostLinks(files)
+        phone = Phone(files, frames, media, work)
+    }
+
+    /** Where a post's pictures go: the poster's Drive. */
+    private fun store(): PostStore = DrivePostStore(drive)
+
+    private fun pictures(clip: () -> File?): PostPictures {
+        val p = phone ?: return PostPictures { null }
+        return PostPhotos(p.files, p.frames, p.media, clip)
+    }
+
+    /**
+     * [block] with time asked of the phone to finish it ([name] is what iOS shows), so a post keeps going while the app
+     * leaves the screen (Android's process goes on; an iPhone app gets what the system gives it). [block] hands its
+     * progress to the ticket.
+     */
+    private suspend fun <T> keepGoing(name: String, block: suspend (progress: (UploadProgress) -> Unit) -> T): T {
+        val ticket = (phone?.work ?: com.justdataplease.boringtravel.ios.NoBackgroundWork).beginBackgroundWork(name)
+        try {
+            return block { p -> ticket.progressBackgroundWork(p.fraction) }
+        } finally {
+            ticket.endBackgroundWork()
+        }
+    }
+
+    /** Posts [plan]; [state] keeps where it got to, so a retry carries on. */
+    suspend fun post(plan: PostPlan, state: UploadState, onProgress: (UploadProgress) -> Unit): Post {
+        val uploader = PostUploader(store(), pictures { plan.clip }, repo)
+        val post = keepGoing("Posting to the community") { progress ->
+            uploader.run(plan, state) { p ->
+                progress(p)
+                onProgress(p)
+            }
+        }
+        changed()
+        return post
+    }
+
+    /**
+     * Sends [plan] to its post again (a trip post kept in step with its trip, [PostSync]): pictures not in [state] yet
+     * go to the post's folder (made when it had none), then the post and its trip are updated.
+     */
+    suspend fun updatePost(plan: PostPlan, state: UploadState, onProgress: (UploadProgress) -> Unit): Post {
+        val uploader = PostUploader(store(), pictures { null }, repo)
+        val post = keepGoing("Updating the community post") { progress ->
+            uploader.run(plan, state, update = true) { p ->
+                progress(p)
+                onProgress(p)
+            }
+        }
+        changed()
+        return post
+    }
+
+    /** Deletes pictures a post no longer shows from its Drive folder (best effort). */
+    suspend fun dropFiles(ids: Collection<String>) {
+        if (ids.isEmpty() || !driveReady()) return
+        val s = store()
+        for (id in ids) runCatching { s.delete(id) }
+    }
+
+    /** Gives up on an unfinished post: its Drive folder goes. */
+    suspend fun discard(state: UploadState) {
+        PostUploader(store(), pictures { null }, repo).discard(state)
+    }
+
+    // ---------------------------------------------------------------- deleting
 
     /**
      * Deletes the viewer's own [post] and then its Drive folder. Returns false when the folder could not be deleted
@@ -323,6 +425,8 @@ class Community(
      */
     suspend fun deletePost(post: Post): Boolean {
         repo.deletePost(post)
+        // A trip kept in step with this post isn't any more.
+        postLinks.removePost(post.id)
         synchronized(likeBook) { likeBook.forget(post.id) }
         publishLikes()
         changed()
@@ -349,6 +453,7 @@ class Community(
      */
     suspend fun deleteProfile(): Boolean {
         val folders = repo.deleteAll()
+        postLinks.clear()
         setProfile(null)
         _blocked.value = emptyList()
         follows.clear()
@@ -420,7 +525,8 @@ class Community(
          * community isn't available), where the account is kept [keys] (the Keychain), the app's account [google], the
          * caches folder [cache] (the lists, documents, pictures and clips kept), the app's settings file [settings] (the
          * writes waiting for a connection), the app's own [scope], the bundle id sent with keyed requests, the build's
-         * Drive API key [driveKey], App Check's token, and the app's Drive (connected, and deleting a post's folder).
+         * Drive API key [driveKey], App Check's token, and the app's Drive (connected, deleting a post's folder, and the
+         * client a post's pictures go up with, [drive]).
          */
         fun make(
             net: com.justdataplease.boringtravel.ios.Net,
@@ -436,13 +542,14 @@ class Community(
             driveConnected: () -> Boolean = { false },
             deleteDriveFile: (suspend (String) -> Unit)? = null,
             pictureWait: Long = 1_000,
+            drive: () -> com.justdataplease.boringtravel.google.RestDriveApi? = { google?.drive },
         ): Community {
             val auth = CommunityAuth(net, config, keys, google, bundleId)
             val pictures = CommunityPictures(com.justdataplease.boringtravel.google.PublicDrive(net, driveKey, bundleId, retryWait = pictureWait), cache)
             if (!auth.configured) return Community(UnavailableCommunity, auth, pictures, scope)
             val fs = com.justdataplease.boringtravel.firebase.FirestoreRest(net, config.projectId, { fresh -> auth.token(fresh) }, appCheck)
             val repo = FirestoreCommunity(fs, auth, CommunityCache(cache), CommunityOutbox(settings))
-            return Community(repo, auth, pictures, scope, driveConnected, deleteDriveFile).also { c ->
+            return Community(repo, auth, pictures, scope, driveConnected, deleteDriveFile, drive).also { c ->
                 c.offerApple { google?.appleConfigured == true }
             }
         }

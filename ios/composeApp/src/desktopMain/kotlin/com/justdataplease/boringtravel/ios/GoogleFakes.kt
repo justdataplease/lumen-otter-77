@@ -139,9 +139,13 @@ class FakeGoogleCloud(
         }
     }
 
-    /** A file shared by link: its bytes, or Drive's 404 when it isn't (or isn't shared any more). */
+    /**
+     * A file shared by link: its bytes, or Drive's 404 when it isn't (or isn't shared any more). Someone's posted files
+     * ([publicFiles]), or a file in this Drive whose folder (or itself) anyone with the link may view (a post made here).
+     */
     private fun shared(c: FakeCall, id: String): NetAnswer {
-        val bytes = publicFiles[id] ?: return answer(c, 404, """{"error":{"code":404,"message":"File not found: $id."}}""")
+        val bytes = publicFiles[id] ?: items[id]?.takeIf { f -> !f.trashed && (f.anyone || f.parents.any { items[it]?.anyone == true }) }?.content
+            ?: return answer(c, 404, """{"error":{"code":404,"message":"File not found: $id."}}""")
         val type = if (bytes.size > 8 && bytes[4] == 'f'.code.toByte() && bytes[5] == 't'.code.toByte()) "video/mp4" else "image/jpeg"
         return NetAnswer(200, c.url, mapOf("Content-Type" to type), bytes)
     }
@@ -288,8 +292,18 @@ class FakeGoogleCloud(
                 items[id]?.anyone = false
                 answer(c, 204, "")
             }
+            // A folder goes with everything in it, as Drive deletes it.
             c.method == "DELETE" && path.startsWith("/drive/v3/files/") ->
-                if (items.remove(id) == null) answer(c, 404, """{"error":{"code":404}}""") else answer(c, 204, "")
+                if (items.remove(id) == null) answer(c, 404, """{"error":{"code":404}}""") else {
+                    var gone = setOf(id)
+                    while (true) {
+                        val inside = items.values.filter { f -> f.parents.any { it in gone } }.map { it.id }
+                        if (inside.isEmpty()) break
+                        inside.forEach { items.remove(it) }
+                        gone = inside.toSet()
+                    }
+                    answer(c, 204, "")
+                }
             path == "/upload/drive/v3/files" && c.q("uploadType") == "multipart" -> {
                 val boundary = c.contentType?.substringAfter("boundary=", "")?.trim('"') ?: return answer(c, 400, "{}")
                 val (meta, media) = multipart(c.body, boundary)

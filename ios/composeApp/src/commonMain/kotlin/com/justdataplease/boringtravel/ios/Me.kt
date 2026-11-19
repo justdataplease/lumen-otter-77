@@ -90,6 +90,8 @@ fun MeScreen(
     onTracking: () -> Unit = {},
     deleteAtStart: Boolean = false,
     signOutAtStart: Boolean = false,
+    /** Community profile (round 25): make or change the traveller's community profile. */
+    onCommunityProfile: () -> Unit = {},
 ) {
     val uri = LocalUriHandler.current
     // Me › AI's line follows a key saved or removed there.
@@ -104,6 +106,12 @@ fun MeScreen(
             AccountCard(settings, Modifier.padding(horizontal = 20.dp), deleteAtStart = deleteAtStart, signOutAtStart = signOutAtStart)
             ThemeSection(settings, Modifier.padding(start = 20.dp, end = 20.dp, top = 16.dp))
             BtCard(Modifier.padding(start = 20.dp, end = 20.dp, top = 20.dp), padding = PaddingValues(horizontal = 16.dp)) {
+                // Community profile first, in a build with the community (Android's MeScreen).
+                val community = com.justdataplease.boringtravel.community.LocalCommunity.current
+                if (community?.available == true) {
+                    val profile by community.profile.collectAsState()
+                    MeRow("Community profile", profile?.let { "@${it.username}" } ?: "Username, name and picture", onCommunityProfile)
+                }
                 // The language dictation listens for.
                 MeRow("Voice notes", settings.dictationLanguage?.let { DictationText.languageName(it, phoneLanguage) } ?: "Phone language") { showVoice = true }
                 // The level for every trip ("Off" until one is picked: nothing is asked at the first start).

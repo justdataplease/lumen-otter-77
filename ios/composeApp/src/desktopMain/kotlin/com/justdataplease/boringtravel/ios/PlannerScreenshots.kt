@@ -275,7 +275,8 @@ private fun pickedPhotos(files: MediaFiles): List<PickedMedia> =
  * Add a link with the clipboard's link, the attachments above the box, the trip questions (empty, and filled in as the
  * planner hands them over), working, a reply with the review bar, the review sheet with one change unticked, the trip
  * choice, Stop and the day's limit; Me › AI with the built-in planner and with an own key and its models; New trip's
- * choices with the AI panel; the trip header with Plan with AI. On recorded answers ([RecordedAi]), never a model.
+ * choices with the AI panel; the Plan's Chat beside Add (with items, and an empty plan's pair; Android 1.22.0). On
+ * recorded answers ([RecordedAi]), never a model.
  */
 fun planner(out: File) {
     val newTripStart: LocalDate = localDate(2027, 5, 12)
@@ -438,8 +439,9 @@ fun planner(out: File) {
         // New trip's choices with the AI panel (Make it myself, Or, the three AI ways, Or, the ready-made trip).
         app("new-trip-ai-$id", look, TripBook(MemoryTripFile()), Place.NewTrip, frames = 12)
 
-        // The trip header with its Plan with AI sparkle.
-        app("trip-plan-with-ai-$id", look, small, Place.Trip(naxos.id), frames = 12)
+        // Android 1.22.0: the Plan's Chat floating beside Add (no ✦ in the header), and an empty plan's pair in the list.
+        app("trip-plan-chat-$id", look, small, Place.Trip(naxos.id), frames = 12)
+        app("trip-plan-chat-empty-$id", look, bare, Place.Trip(lisbon.id), frames = 12)
     }
     // The trip questions whole, in one tall picture.
     app("planner-questions-full", Look.PostcardPop, TripBook(MemoryTripFile()), Place.Planner(null, PlannerStart.QUESTIONS), height = PLANNER_HEIGHT * 2)
