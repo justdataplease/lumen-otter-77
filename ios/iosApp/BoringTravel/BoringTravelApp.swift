@@ -34,8 +34,15 @@ private struct RootView: SwiftUI.View {
     var body: some SwiftUI.View {
         // Edge to edge: the screens keep clear of the Dynamic Island and the home indicator themselves.
         ComposeScreen(screens: $screens).ignoresSafeArea()
-            // A widget's button (boringtravel://write, camera, voice, today).
+            // A widget's button (boringtravel://write, camera, voice, today), and since round 24 a community post's link:
+            // the app's own (boringtravel://post/#<id>) or the web one as a universal link
+            // (https://justdataplease.com/apps/boringtravel/post/#<id>). Kotlin reads both (Deeplink.of).
             .onOpenURL { url in _ = IosAppKt.openAppLink(url: url.absoluteString) }
+            // A universal link handed over as a browsing activity (iOS may use either way); a post already open is
+            // not opened twice.
+            .onContinueUserActivity(NSUserActivityTypeBrowsingWeb) { activity in
+                if let url = activity.webpageURL { _ = IosAppKt.openAppLink(url: url.absoluteString) }
+            }
     }
 }
 

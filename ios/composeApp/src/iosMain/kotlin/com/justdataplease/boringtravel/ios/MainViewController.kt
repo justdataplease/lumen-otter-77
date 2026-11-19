@@ -46,6 +46,8 @@ fun MainViewController(maps: NativeMaps?, snapshots: NativeMapSnapshots?, restor
                 restored = restored, keep = keeper?.let { k -> { text: String -> k.keepScreens(text) } },
                 // The account, Drive and the backups (round 23): the run's own, which the daily backup's task shares.
                 google = IosApp.google, backups = IosApp.backups, driveBackups = IosApp.driveBackups,
+                // The community (round 24): Firestore over REST on this build's Firebase ids.
+                community = IosApp.community,
             )
         }
     }

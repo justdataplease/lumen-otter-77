@@ -205,6 +205,9 @@ object DrawnAppleButton : AppleButton {
 /** Apple's words on its button. */
 const val APPLE_LABEL = "Sign in with Apple"
 
+/** Delete account stopped because the community's data couldn't be deleted (the Android app's AccountCard). */
+const val COMMUNITY_NOT_DELETED = "Couldn't delete your community data. Check the connection and try again."
+
 /** The phone's Sign in with Apple button. */
 val LocalAppleButton = staticCompositionLocalOf<AppleButton> { DrawnAppleButton }
 
@@ -224,6 +227,7 @@ fun AppleSignInButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
 fun AccountCard(settings: AppSettings, modifier: Modifier = Modifier, deleteAtStart: Boolean = false, signOutAtStart: Boolean = false, messageAtStart: String? = null) {
     val google = LocalGoogle.current
     val kit = LocalPlannerKit.current
+    val community = com.justdataplease.boringtravel.community.LocalCommunity.current
     val uri = LocalUriHandler.current
     val scope = rememberCoroutineScope()
     val appScope = LocalAppScope.current ?: scope
@@ -329,14 +333,27 @@ fun AccountCard(settings: AppSettings, modifier: Modifier = Modifier, deleteAtSt
                     appScope.launch {
                         // Runs to the end even if Me is left meanwhile (half a deletion would leave data behind).
                         val failed = withContext(NonCancellable) {
-                            // The Apple account first (Apple's sheet once more, its token revoked, the Firebase account
-                            // deleted). If that fails the account stays, so it can be tried again.
-                            val apple = google?.deleteAppleAccount()
-                            if (apple == null) {
+                            // The community first (profile, username, posts, likes, follows; Android's order, round 24).
+                            // If that fails the account stays, so it can be tried again.
+                            val c = community?.takeIf { it.available }
+                            suspend fun communityData(): String? = try {
+                                if (apple) c?.deleteData() else c?.deleteAccount()
+                                null
+                            } catch (e: kotlinx.coroutines.CancellationException) {
+                                throw e
+                            } catch (_: Exception) {
+                                COMMUNITY_NOT_DELETED
+                            }
+                            // An Apple account: Apple's sheet once more first, its community data deleted with it, then its
+                            // token revoked and the Firebase account deleted. A Google account: the community's data and
+                            // Firebase account, then the rest.
+                            val stopped = if (apple) google?.deleteAppleAccount(before = { communityData() }) else communityData()
+                            if (stopped == null) {
+                                if (apple) c?.signOut()
                                 kit?.ownAi?.clearAll() // Me › AI: own keys and choices.
                                 google?.removeAccount()
                             }
-                            apple
+                            stopped
                         }
                         message = failed
                         busy = false
@@ -350,10 +367,12 @@ fun AccountCard(settings: AppSettings, modifier: Modifier = Modifier, deleteAtSt
                     Text(
                         if (apple) {
                             "BoringTravel signs out, deletes your Sign in with Apple account (Apple asks you once more) and your own AI " +
-                                "keys from this phone, and gives its Google Drive access back to Google."
+                                "keys from this phone, and gives its Google Drive access back to Google. Your community profile, " +
+                                "username, posts, likes and follows are deleted too."
                         } else {
                             "BoringTravel signs out, gives its Google Drive access back to Google and deletes your Google name, " +
-                                "email and own AI keys from this phone."
+                                "email and own AI keys from this phone. Your community profile, username, posts, likes and follows are " +
+                                "deleted too."
                         },
                         style = Bt.text.body,
                     )

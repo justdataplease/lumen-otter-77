@@ -92,7 +92,7 @@ class FrameOnDesktopTest {
             // The tab without a screen on this phone says so; the Calendar, the Map and Me are there.
             tab("Community").performClick()
             tab("Community").assertIsSelected()
-            onNodeWithText("Not on iPhone yet.").assertExists()
+            onNodeWithText("Not in this build").assertExists()
             // (The Map tab's own Globe · Map switch also has a "Map".)
             tab("Map").performClick()
             // The globe first, as on Android.

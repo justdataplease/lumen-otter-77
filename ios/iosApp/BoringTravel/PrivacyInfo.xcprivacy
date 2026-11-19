@@ -38,6 +38,36 @@
 				<string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string>
 			</array>
 		</dict>
+		<!-- Round 24, the community (Android's): signing in to it puts the Google or Apple account into the owner's Firebase
+		     Authentication (its email, name and user id, above and here), and the community's Firestore keeps what the
+		     traveller makes there, shown to other travellers: the profile (username, name, bio, picture), posts and their
+		     trip plans, likes, follows, blocks and reports. All linked to the person, for the community only, never for
+		     tracking; Delete profile and Delete account delete them. (Round 25's posting adds the posts' photos and clips,
+		     which stay in the poster's own Drive, shared by link.) -->
+		<dict>
+			<key>NSPrivacyCollectedDataType</key>
+			<string>NSPrivacyCollectedDataTypeName</string>
+			<key>NSPrivacyCollectedDataTypeLinked</key>
+			<true/>
+			<key>NSPrivacyCollectedDataTypeTracking</key>
+			<false/>
+			<key>NSPrivacyCollectedDataTypePurposes</key>
+			<array>
+				<string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string>
+			</array>
+		</dict>
+		<dict>
+			<key>NSPrivacyCollectedDataType</key>
+			<string>NSPrivacyCollectedDataTypeOtherUserContent</string>
+			<key>NSPrivacyCollectedDataTypeLinked</key>
+			<true/>
+			<key>NSPrivacyCollectedDataTypeTracking</key>
+			<false/>
+			<key>NSPrivacyCollectedDataTypePurposes</key>
+			<array>
+				<string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string>
+			</array>
+		</dict>
 	</array>
 	<key>NSPrivacyAccessedAPITypes</key>
 	<array>
@@ -54,7 +84,8 @@
 		<!-- Round 19: the trip video's editor reads when its own copied videos and voice lines were written (in the
 		     app's container), so files no edit uses any more are deleted after an hour (Android's ClipMedia.sweep).
 		     Since the second parity round also a note's video half made 720p by a stopped app (journal-videos/, in the
-		     app's container) goes after an hour (Android's JournalVideos.workDir): the same reason. -->
+		     app's container) goes after an hour (Android's JournalVideos.workDir): the same reason. Since round 24 also the
+		     community's clips in the app's caches: the newest few are kept (Android's Community.prune), the same reason. -->
 		<dict>
 			<key>NSPrivacyAccessedAPIType</key>
 			<string>NSPrivacyAccessedAPICategoryFileTimestamp</string>

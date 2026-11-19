@@ -155,6 +155,11 @@ fun main(args: Array<String>) {
         accounts(out)
         return
     }
+    // `-PshotsOnly=community`: only the community (round 24).
+    if (args.getOrNull(1) == "community") {
+        community(out)
+        return
+    }
     fun app(name: String, book: TripBook, vararg at: Place, look: Look = Look.Default, settings: AppSettings = AppSettings.ready(look), height: Int = HEIGHT, web: Web? = null) =
         shot(File(out, "$name.png"), height = height) {
             BoringTravelApp(book, settings, SAMPLE_TODAY, FRAME, startAt = at.toList(), version = PREVIEW_VERSION, web = web ?: Web.offline())
@@ -372,6 +377,7 @@ fun main(args: Array<String>) {
     parity(out)
     secondParity(out)
     accounts(out)
+    community(out)
     println("Screenshots in ${out.absolutePath}")
 }
 

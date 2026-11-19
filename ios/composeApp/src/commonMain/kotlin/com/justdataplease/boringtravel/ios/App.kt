@@ -94,6 +94,7 @@ fun App(
     google: com.justdataplease.boringtravel.google.GoogleAccount? = null,
     backups: BackupFiles? = null,
     driveBackups: DriveBackups? = null,
+    community: com.justdataplease.boringtravel.community.Community? = null,
 ) {
     var ready by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) {
@@ -112,7 +113,7 @@ fun App(
     if (ready) BoringTravelApp(
         book, settings, version = version, media = media, followsClock = true, web = network, calendar = calendar, ai = ai,
         tracking = phone?.tracking, processor = phone?.processor, widget = phone?.widget, links = phone?.links,
-        restored = restored, keep = keep, google = google, backups = backups, driveBackups = driveBackups,
+        restored = restored, keep = keep, google = google, backups = backups, driveBackups = driveBackups, community = community,
     )
 }
 
@@ -223,6 +224,18 @@ sealed interface Place {
     /** Trip [tripId]'s book: the trip's ⋮ › Make a book, Share's "Make a book". */
     data class Book(val tripId: String) : Place
 
+    /** One community post (round 24): from the feed, a profile, a post's link. The bar stays on Community. */
+    data class CommunityPost(val postId: String) : Place
+
+    /** Someone's community profile (their posts, likes received, follows). The bar stays on Community. */
+    data class CommunityProfile(val uid: String) : Place
+
+    /** Someone's followers ([followers]) or whom they follow. The bar stays on Community. */
+    data class CommunityFollows(val uid: String, val followers: Boolean) : Place
+
+    /** Community profile: make or change the signed-in traveller's, their blocked people. No bar. */
+    data object CommunityProfileEdit : Place
+
     companion object {
         val Trips: Place = Home(HomeTab.Trips)
     }
@@ -265,9 +278,19 @@ fun BoringTravelApp(
     google: com.justdataplease.boringtravel.google.GoogleAccount? = null,
     backups: BackupFiles? = null,
     driveBackups: DriveBackups? = null,
+    community: com.justdataplease.boringtravel.community.Community? = null,
 ) {
     val rows = remember(book) { { id: String -> book.media(id) } }
     val appScope = rememberCoroutineScope()
+    // The community (round 24): the phone's (iPhone: IosApp's, on this build's Firebase ids), else one that isn't
+    // available in this build (previews, tests, the desktop window), so nothing reaches Firebase there.
+    val communityHere = community ?: remember(appScope) {
+        com.justdataplease.boringtravel.community.Community(com.justdataplease.boringtravel.community.UnavailableCommunity, null, null, appScope)
+    }
+    remember(google, communityHere) {
+        // Signing out of the app signs out of the community (Android's AppGraph: onSignedOut).
+        google?.onSignedOut = { communityHere.signOut() }
+    }
     // The recorded points become stops when a map opens, and for the trips on now or just ended when the app starts.
     val tracks = processor ?: remember(book, web, settings) { TrackProcessor(book, web.location, levelNow = { settings.trackingLevel }) }
     // Route tracking: the phone's (iPhone: Core Location, UserNotifications, BGTaskScheduler); else one on a phone in
@@ -302,6 +325,7 @@ fun BoringTravelApp(
         LocalBackupFiles provides backupFiles, LocalAppVersion provides version, LocalPlannerKit provides planner,
         com.justdataplease.boringtravel.google.LocalGoogle provides google, LocalDriveBackups provides drive,
         LocalTracking provides routes, LocalAppLinks provides links, LocalSavedClips provides savedClips,
+        com.justdataplease.boringtravel.community.LocalCommunity provides communityHere,
         // The phone's language and region for what the Android screens write with them (Android's LocalConfiguration).
         LocalConfiguration provides remember { Configuration(LocaleList(listOf(Locale.getDefault()))) },
     ) {
@@ -459,6 +483,9 @@ private fun AppFrame(
     // entry); leaving it drops the chat and what wasn't saved, once the screen has faded out.
     val chats = remember { HashMap<String, PlannerChat>() }
     val leaving = remember { HashMap<String, PlannerChat>() }
+    // Each entry's view-models (the community's screens, read in from Android: compat's ViewModel), kept while the entry
+    // is on the stack or among a tab's pages, cleared once it is gone and has faded out.
+    val viewModels = remember { HashMap<String, com.justdataplease.boringtravel.compat.ViewModelStore>() }
     /** A screen off the stack for good: its remembered state, its note and its chat go (the chat after the fade). */
     fun forget(entry: StackEntry) {
         saved.removeState(entry.key)
@@ -468,6 +495,12 @@ private fun AppFrame(
             scope.launch {
                 kotlinx.coroutines.delay(SCREEN_FADE_OUT_MS + 100L)
                 leaving.remove(entry.key)?.close()
+            }
+        }
+        viewModels.remove(entry.key)?.let { store ->
+            scope.launch {
+                kotlinx.coroutines.delay(SCREEN_FADE_OUT_MS + 100L)
+                store.clear()
             }
         }
     }
@@ -553,6 +586,8 @@ private fun AppFrame(
             stack.places.lastOrNull { it is Place.Trip }?.let { Where.InTrip((it as Place.Trip).tripId, tripTab) }
                 ?: (stack.places.lastOrNull { it is Place.Home } as? Place.Home)?.let { Where.Home(it.tab) },
         )
+        // A post, a profile and a follow list belong under Community (Android's AppNav.whereOf).
+        is Place.CommunityPost, is Place.CommunityProfile, is Place.CommunityFollows -> Where.Under(HomeTab.Community)
         else -> Where.Elsewhere
     }
 
@@ -563,7 +598,9 @@ private fun AppFrame(
     fun homeTab(tapped: HomeTab, where: Where) {
         when (TripNav.homeTap(where, tapped)) {
             TripNav.HomeTap.Stay -> Unit
-            TripNav.HomeTap.BackToTab -> backTo(Place.Home(tapped))
+            // Back to the tab when it is under the page (Android's popBackStack(route)); a post opened from a link over
+            // another tab has none under it: the tab then shows as a switch would (Android's tab(route)).
+            TripNav.HomeTap.BackToTab -> if (tapped == HomeTab.Trips || stack.places.contains(Place.Home(tapped))) backTo(Place.Home(tapped)) else showTab(tapped)
             // Trips stays at the bottom, as Android's start screen: back from another tab goes there.
             TripNav.HomeTap.Switch -> showTab(tapped)
         }
@@ -610,6 +647,11 @@ private fun AppFrame(
         val action = pendingLink ?: return@LaunchedEffect
         links.take()
         if (!settings.onboardingDone) return@LaunchedEffect
+        // A community post's link (a universal link, or boringtravel://post/#<id>): the post opens (Android's AppNav).
+        Deeplink.postOf(action)?.let { postId ->
+            if (stack.last.place != Place.CommunityPost(postId)) open(Place.CommunityPost(postId))
+            return@LaunchedEffect
+        }
         val day = if (followsClock) com.justdataplease.boringtravel.time.today() else today
         val trip = com.justdataplease.boringtravel.ui.trips.HomeStats.sections(TripsHomeData.visibleTrips(book, settings.demoMode), day).now
         when (action) {
@@ -621,6 +663,18 @@ private fun AppFrame(
             Deeplink.TRACKING -> open(Place.Tracking)
         }
     }
+
+    // The community (round 24): its screens are Android's, read in; what they reach of Android's AppGraph and AppActions
+    // is this app's (ios/CommunityNav.kt). Writes made without a connection go each time the app comes back.
+    val community = com.justdataplease.boringtravel.community.LocalCommunity.current
+    val communityGraph = remember(community, settings, book, google) {
+        community?.let { CommunityGraph(it, CommunitySettings(settings), CommunityTrips(book, onNewOwnTrip = { leaveDemo() }, changed = changed), google) }
+    }
+    val communityActions = CommunityActions(
+        goBack = ::back, open = ::open, top = { stack.entries.lastOrNull()?.place },
+        openTripOn = { id, tab -> openTrip(id, tab) }, say = ::say,
+    )
+    LifecycleEventEffect(Lifecycle.Event.ON_START) { community?.let { c -> scope.launch { c.flush() } } }
 
     val actions = Actions(
         changed = changed, back = ::back, open = ::open,
@@ -643,6 +697,10 @@ private fun AppFrame(
         chat = { key, make -> chats[key] ?: leaving[key] ?: chats.getOrPut(key, make) },
         scope = scope,
         noteId = { entry, note -> noteIds[entry] = note },
+        community = communityGraph,
+        communityActions = communityActions,
+        // New trip's "Start from a community trip": the Community tab (Android's actions.tab(CommunityHome)).
+        toCommunity = { showTab(HomeTab.Community) },
     )
 
     // The status bar's icons on the theme's page (Android's MainActivity.SystemBars): light on Trail, dark on the four
@@ -658,7 +716,15 @@ private fun AppFrame(
         LaunchedEffect(text) { keep(text) }
     }
 
-    CompositionLocalProvider(LocalSiteImport provides siteImport, LocalSay provides ::say) { BoringTravelTheme(settings.look, settings.fontSet, settings.textFont) {
+    // The screens' context (compat's, for the community's screens read in from Android): their toasts are the app's
+    // snackbar, their share intent the phone's share sheet.
+    val phone = LocalPhone.current
+    val screenContext = remember(phone) {
+        com.justdataplease.boringtravel.compat.ScreenContext(MemorySettingsFile(), { say(it) }) { subject, text -> phone.share(subject, text) }
+    }
+    CompositionLocalProvider(
+        LocalSiteImport provides siteImport, LocalSay provides ::say, com.justdataplease.boringtravel.compat.LocalContext provides screenContext,
+    ) { BoringTravelTheme(settings.look, settings.fontSet, settings.textFont) {
         val where = where()
         val bar = TripNav.bar(where)
         // The page's paper runs under the status bar, the bar and the home indicator. Sideways the screens keep clear of
@@ -687,7 +753,13 @@ private fun AppFrame(
                         label = "Screens",
                     ) { entry ->
                         saved.SaveableStateProvider(entry.key) {
-                            Screen(entry.place, book, settings, today, revision, tripTab, tripDay, version, actions, entry.key, entry.id)
+                            // The entry's view-models: the same while it is on the stack (also while it fades out).
+                            val store = remember(entry.key) {
+                                viewModels.getOrPut(entry.key) { com.justdataplease.boringtravel.compat.ViewModelStore(scope.coroutineContext) }
+                            }
+                            CompositionLocalProvider(com.justdataplease.boringtravel.compat.LocalViewModelStore provides store) {
+                                Screen(entry.place, book, settings, today, revision, tripTab, tripDay, version, actions, entry.key, entry.id)
+                            }
                         }
                     }
                     BtSnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter))
@@ -742,6 +814,12 @@ private class Actions(
     val scope: CoroutineScope,
     /** The note a Write on the stack (its entry's id) is writing, kept for a restore. */
     val noteId: (entry: Int, note: String) -> Unit = { _, _ -> },
+    /** The community's AppGraph (round 24); null where the app has no community at all. */
+    val community: CommunityGraph? = null,
+    /** Where the community's buttons go (Android's AppActions, as its screens call them). */
+    val communityActions: CommunityActions? = null,
+    /** The Community tab, as the bar switches to it. */
+    val toCommunity: () -> Unit = {},
 ) {
     /** Where the globe and Your world go, and how they say the trips changed. */
     val world = WorldNav(
@@ -813,7 +891,12 @@ private fun Screen(
                 onExitDemo = { a.setDemo(false) },
             )
             HomeTab.Map -> MapHome(book, settings, today, revision, a.changed, a.maps, a.world)
-            HomeTab.Community -> TabToCome("Community")
+            // The community (round 24): the Android app's own screen, read in.
+            HomeTab.Community -> {
+                val g = a.community
+                val acts = a.communityActions
+                if (g != null && acts != null) com.justdataplease.boringtravel.ui.community.CommunityScreen(g, acts) else TabToCome("Community")
+            }
             HomeTab.Me -> MeScreen(
                 settings, version, onDemo = a.setDemo, onImportFromLink = { a.open(Place.CopySite()) }, onBackup = { a.open(Place.Backup) },
                 onAi = { a.open(Place.AiSettings) }, onTracking = { a.open(Place.Tracking) },
@@ -830,6 +913,7 @@ private fun Screen(
             },
             onReadyMade = { a.open(Place.Ideas) },
             onPlanner = { start -> a.open(Place.Planner(null, start)) },
+            onCommunity = a.toCommunity,
             startOn = (place as? Place.NewTripFrom)?.start,
             // Whatever opened New trip, demo mode ends first ("Demo mode off").
             onNewTripShown = a.leaveDemo,
@@ -877,6 +961,11 @@ private fun Screen(
         )
         // The book (round 21): photos brought in from the phone join the trip, so the trip's screens read it again.
         is Place.Book -> BookScreen(book, place.tripId, settings, onBack = a.back, onChanged = a.changed)
+        // The community's pages (round 24): the Android app's own screens, read in.
+        is Place.CommunityPost -> communityPage(a) { g, acts -> com.justdataplease.boringtravel.ui.community.PostScreen(g, acts, place.postId) }
+        is Place.CommunityProfile -> communityPage(a) { g, acts -> com.justdataplease.boringtravel.ui.community.ProfileScreen(g, acts, place.uid) }
+        is Place.CommunityFollows -> communityPage(a) { g, acts -> com.justdataplease.boringtravel.ui.community.FollowListScreen(g, acts, place.uid, place.followers) }
+        Place.CommunityProfileEdit -> communityPage(a) { g, acts -> com.justdataplease.boringtravel.ui.community.ProfileEditScreen(g, acts) }
         is Place.Clip -> ClipScreen(
             book, place.tripId, settings,
             onBack = a.back,
@@ -972,6 +1061,14 @@ private fun Screen(
             photoDefaults = { trip -> PhotoDefaults.of(settings.tripPhotoStyles.of(trip)) },
         )
     }
+}
+
+/** A community page with the app's community and its buttons; nothing where the app has none. */
+@Composable
+private fun communityPage(a: Actions, content: @Composable (CommunityGraph, CommunityActions) -> Unit) {
+    val g = a.community ?: return
+    val acts = a.communityActions ?: return
+    content(g, acts)
 }
 
 /** Snackbars in reverse colours, the page colour on ink (the Android app's SnackbarHost in AppNav and PlanTab). */

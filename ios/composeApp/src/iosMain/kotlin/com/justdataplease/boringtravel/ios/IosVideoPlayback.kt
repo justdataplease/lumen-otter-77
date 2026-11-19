@@ -48,8 +48,11 @@ import platform.UIKit.UIView
 
 /** Videos under the app's files [files], played by AVPlayer. */
 class IosVideoPlayback(private val files: IosMediaFiles) : VideoPlayback {
-    override fun open(path: String, loop: Boolean): PlayingVideo? {
-        val full = files.absolute(path)
+    override fun open(path: String, loop: Boolean): PlayingVideo? = openAt(files.absolute(path), loop)
+
+    /** The video at [fullPath] (also outside the app's files: a community clip in the caches, round 24). */
+    override fun openAt(fullPath: String, loop: Boolean): PlayingVideo? {
+        val full = fullPath
         if (!NSFileManager.defaultManager.fileExistsAtPath(full)) return null
         // Sound even with the phone on silent, as a video someone chose to play (Android plays it on the media volume).
         AVAudioSession.sharedInstance().setCategory(AVAudioSessionCategoryPlayback, error = null)

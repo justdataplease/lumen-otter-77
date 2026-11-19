@@ -91,6 +91,12 @@ interface VideoPlayback {
     /** A player for the video at [path] (under the app's files) that plays again from the start at its end when [loop]; null when this phone has none. */
     fun open(path: String, loop: Boolean): PlayingVideo?
 
+    /**
+     * A player for the video at the full path [fullPath] (outside the app's files: a community post's clip in the caches,
+     * round 24); null when this phone has none.
+     */
+    fun openAt(fullPath: String, loop: Boolean): PlayingVideo? = null
+
     /** [video]'s pictures, fitted in [modifier] with their own shape kept (Android's VideoView; AVPlayerLayer on iPhone). */
     @Composable
     fun Surface(video: PlayingVideo, modifier: Modifier)
@@ -113,6 +119,8 @@ class StillVideoPlayback(private val lengthOf: (String) -> Int? = { 45_000 }, pr
     val opened = mutableListOf<StillVideo>()
 
     override fun open(path: String, loop: Boolean): PlayingVideo = StillVideo(path, lengthOf(path), loop, startAt).also { opened += it }
+
+    override fun openAt(fullPath: String, loop: Boolean): PlayingVideo = open(fullPath, loop)
 
     @Composable
     override fun Surface(video: PlayingVideo, modifier: Modifier) {
@@ -201,9 +209,10 @@ fun PlayMark(modifier: Modifier = Modifier, size: Dp = 56.dp) {
  * of how long). "This video can't be played." on the black when the phone can't play it.
  */
 @Composable
-fun ClipViewer(path: String, onClose: () -> Unit, loop: Boolean = true, controls: Boolean = false) {
+fun ClipViewer(path: String, onClose: () -> Unit, loop: Boolean = true, controls: Boolean = false, fullPath: Boolean = false) {
     val playback = LocalMediaKit.current.playback
-    val player = remember(path) { playback.open(path, loop) }
+    // [fullPath]: a path outside the app's files (a community post's clip in the caches, round 24).
+    val player = remember(path) { if (fullPath) playback.openAt(path, loop) else playback.open(path, loop) }
     var paused by remember { mutableStateOf(false) }
     var failed by remember { mutableStateOf(player == null) }
     var duration by remember { mutableIntStateOf(0) }

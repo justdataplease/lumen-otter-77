@@ -220,7 +220,8 @@ class AccountScreensOnDesktopTest {
         onNodeWithText("Delete account").performClick()
         onNodeWithText("Delete account?").assertExists()
         onNodeWithText(
-            "BoringTravel signs out, gives its Google Drive access back to Google and deletes your Google name, email and own AI keys from this phone.",
+            "BoringTravel signs out, gives its Google Drive access back to Google and deletes your Google name, email and own AI keys " +
+                "from this phone. Your community profile, username, posts, likes and follows are deleted too.",
         ).assertExists()
         onNodeWithText("How to delete everything").assertExists()
         onNodeWithText("Delete").performClick()

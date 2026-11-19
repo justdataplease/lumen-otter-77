@@ -728,12 +728,163 @@ val bookRewrites: Map<String, List<Pair<String, String>>> = run {
 }
 
 /*
+ * The community (round 24), compiled as it is: its words and numbers (CommunityModel: posts, profiles, the feed's texts
+ * and counts; Usernames; ProfileAvatar), the repository's operations every screen calls (CommunityRepository), the
+ * leaderboard and the hearts across the screens (Leaderboard with LikeBook), the Following feed's merged pages
+ * (FollowingFeed), follows and their keeper (Follows, FollowKeeper), a post's link (CommunityLinks), a trip as a post
+ * carries it (SharedTrip) and Copy this trip (TripCopy). And the screens, as far as they are plain Compose: the Community
+ * tab (CommunityScreen with FeedViewModel), a post (PostScreen with PostViewModel), the shared parts (CommunityParts),
+ * the sheets and dialogs (CommunitySheets: rules, Report, the ⋮ menu, Copy this trip's first day), the photo viewer
+ * (MediaViewer), Follow's pieces (FollowParts), a profile, its follow lists and Community profile (ProfileScreen,
+ * FollowListScreen, ProfileEditScreen). Written again here: community/Community.kt (Android's Community: Firebase,
+ * Coil), community/FirestoreCommunity.kt (Firestore's REST API in place of the SDK), and what the cuts below take out
+ * (ui/community/CommunityPhone.kt). What the screens reach of Android is compat's (compat/AndroidScreens.kt: Toast,
+ * the share Intent, LocalContext, ViewModel and viewModel(key)) and this app's (ios/CommunityNav.kt: AppGraph and
+ * AppActions as far as the community calls them).
+ */
+val communityFiles = listOf(
+    "community/CommunityModel.kt", "community/CommunityRepository.kt", "community/Leaderboard.kt", "community/FollowingFeed.kt",
+    "community/Follows.kt", "community/FollowKeeper.kt", "community/CommunityLinks.kt", "community/SharedTrip.kt",
+    "community/TripCopy.kt", "community/Usernames.kt", "community/ProfileAvatar.kt",
+    "ui/community/CommunityParts.kt", "ui/community/CommunityScreen.kt", "ui/community/FeedViewModel.kt",
+    "ui/community/PostScreen.kt", "ui/community/PostViewModel.kt", "ui/community/CommunitySheets.kt",
+    "ui/community/MediaViewer.kt", "ui/community/FollowParts.kt", "ui/community/ProfileScreen.kt",
+    "ui/community/FollowListScreen.kt", "ui/community/ProfileEditScreen.kt",
+)
+
+/*
+ * The community's lines rewritten on the way in: java.time, java.text and java.util by compat's names and the engine's
+ * days (days ordered by their epoch day), Java's number formats as JavaFormat writes them, Normalizer as art/SceneText.kt's
+ * decomposed(), the JVM's lock as compat's, the clock as nowMs(); in the screens Android's Toast, share intent,
+ * LocalContext and view-models as compat's, AppGraph and AppActions as this app's (ios/CommunityNav.kt), this app's
+ * pictures, flags, kind badges, maps and place photos (ios/), and Coil's, the onboarding's and the WebView's imports left
+ * as notes where the functions using them are cut out. Two private parts of CommunityScreen become internal, for the
+ * sign-in gate written again here. The Report sheet gets the contact line Apple's rule 1.2 asks for (iPhone only).
+ */
+val communityRewrites: Map<String, List<Pair<String, String>>> = run {
+    val c = "com.justdataplease.boringtravel.compat"
+    fun to(old: String, new: String) = "import $old" to "import $new"
+    fun gone(name: String, why: String) = "import $name" to "// $name: $why"
+    fun ios(pkg: String, name: String) = to("com.justdataplease.boringtravel.$pkg.$name", "com.justdataplease.boringtravel.ios.$name")
+    val graph = to("com.justdataplease.boringtravel.AppGraph", "com.justdataplease.boringtravel.ios.CommunityGraph as AppGraph")
+    val actions = to("com.justdataplease.boringtravel.ui.nav.AppActions", "com.justdataplease.boringtravel.ios.CommunityActions as AppActions")
+    val viewModel = to("androidx.lifecycle.ViewModel", "$c.ViewModel")
+    val scope = to("androidx.lifecycle.viewModelScope", "$c.viewModelScope")
+    val viewModelOf = to("androidx.lifecycle.viewmodel.compose.viewModel", "$c.viewModel")
+    val collect = to("androidx.lifecycle.compose.collectAsStateWithLifecycle", "$c.collectAsStateWithLifecycle")
+    val toast = to("android.widget.Toast", "$c.Toast")
+    val context = to("androidx.compose.ui.platform.LocalContext", "$c.LocalContext")
+    val day = to("java.time.LocalDate", "com.justdataplease.boringtravel.time.LocalDate")
+    val now = "System.currentTimeMillis()" to "com.justdataplease.boringtravel.time.nowMs()"
+    val cut = "its function is cut out on the way in (written again in ui/community/CommunityPhone.kt)."
+    mapOf(
+        "community/CommunityModel.kt" to listOf(
+            to("java.text.NumberFormat", "$c.JavaFormat"), to("java.time.Instant", "$c.Instant"), to("java.time.YearMonth", "$c.yearMonthDay"),
+            to("java.time.ZoneOffset", "$c.ZoneOffset"), to("java.time.format.DateTimeFormatter", "$c.DateTimeFormatter"), to("java.util.Locale", "$c.Locale"),
+            "NumberFormat.getIntegerInstance(locale).format(km)" to "JavaFormat.groupedInt(km.toLong(), locale)",
+            "\"%.1f\".format(Locale.ROOT, n / 1_000.0)" to "JavaFormat.oneDecimal(n / 1_000.0)",
+            "\"%.1f\".format(Locale.ROOT, n / 1_000_000.0)" to "JavaFormat.oneDecimal(n / 1_000_000.0)",
+            "YearMonth.parse(key, MONTH_KEY).format(DateTimeFormatter.ofPattern(\"MMM yyyy\", locale))" to
+                "DateTimeFormatter.ofPattern(\"MMM yyyy\", locale).format(yearMonthDay(key))",
+        ),
+        "community/CommunityRepository.kt" to listOf(to("java.io.IOException", "com.justdataplease.boringtravel.io.IOException")),
+        // One lock for the follows' short sections (compat's synchronized); the clock is the engine's.
+        "community/FollowKeeper.kt" to listOf(
+            to("kotlinx.coroutines.withTimeoutOrNull", "kotlinx.coroutines.withTimeoutOrNull\nimport $c.synchronized"),
+            "private val clock: () -> Long = System::currentTimeMillis," to "private val clock: () -> Long = { com.justdataplease.boringtravel.time.nowMs() },",
+        ),
+        "community/SharedTrip.kt" to listOf(
+            to("java.time.Instant", "$c.Instant"), to("java.time.LocalDate", "com.justdataplease.boringtravel.time.LocalDate\nimport $c.isBefore"),
+            to("java.time.ZoneId", "$c.ZoneId"),
+            "val first = listOfNotNull(trip.startDate, itemDays.minOrNull()).minOrNull()" to
+                "val first = listOfNotNull(trip.startDate, itemDays.minByOrNull { it.toEpochDay() }).minByOrNull { it.toEpochDay() }",
+            "val last = listOfNotNull(trip.endDate, itemDays.maxOrNull()).maxOrNull()" to
+                "val last = listOfNotNull(trip.endDate, itemDays.maxByOrNull { it.toEpochDay() }).maxByOrNull { it.toEpochDay() }",
+            "encode(t).toByteArray(Charsets.UTF_8).size" to "encode(t).encodeToByteArray().size",
+        ),
+        "community/TripCopy.kt" to listOf(ios("links", "LinkPlaces"), day),
+        "community/Usernames.kt" to listOf(
+            to("java.text.Normalizer", "com.justdataplease.boringtravel.art.decomposed"),
+            "import java.util.Locale" to "// Locale: Kotlin's own lowercase() here.",
+            "lowercase(Locale.ROOT)" to "lowercase()",
+            "Normalizer.normalize(source, Normalizer.Form.NFD)" to "decomposed(source)",
+        ),
+        "ui/community/CommunityParts.kt" to listOf(
+            gone("androidx.compose.ui.platform.LocalContext", cut), gone("coil3.compose.AsyncImage", cut), gone("coil3.network.NetworkHeaders", cut),
+            gone("coil3.network.httpHeaders", cut), gone("coil3.request.ImageRequest", cut), gone("com.justdataplease.boringtravel.graph", cut),
+            gone("com.justdataplease.boringtravel.ui.onboarding.findActivity", cut),
+            ios("ui.components", "DrawnScene"), ios("ui.world", "TripFlags"),
+            "    now: Long = System.currentTimeMillis()," to "    now: Long = com.justdataplease.boringtravel.time.nowMs(),",
+        ),
+        "ui/community/CommunityScreen.kt" to listOf(
+            graph, actions, viewModelOf, collect, ios("ui.components", "DrawnScene"),
+            gone("androidx.compose.ui.platform.LocalContext", cut), gone("com.justdataplease.boringtravel.ui.onboarding.findActivity", cut),
+            gone("java.time.LocalDate", cut),
+            "val now = remember(state.posts) { System.currentTimeMillis() }" to "val now = remember(state.posts) { com.justdataplease.boringtravel.time.nowMs() }",
+            "private fun CommunityHeader(" to "internal fun CommunityHeader(",
+            "private fun GateLine(" to "internal fun GateLine(",
+            // A build without the community's Firebase setup: on iPhone the store is the App Store.
+            "\"The community needs the app from Google Play or GitHub.\"" to "\"The community needs the app from the App Store.\"",
+        ),
+        "ui/community/FeedViewModel.kt" to listOf(
+            viewModel, scope, graph,
+            "import com.justdataplease.boringtravel.data.repo.Stamps" to "// Stamps: the engine's clock here (nowMs).",
+            "PostText.monthKey(Stamps.now())" to "PostText.monthKey(com.justdataplease.boringtravel.time.nowMs())",
+        ),
+        "ui/community/PostScreen.kt" to listOf(
+            to("android.content.Intent", "$c.Intent"), toast, context, collect, viewModelOf, graph, actions,
+            ios("links", "PlacePhotos"), ios("ui.map", "BtMap"), ios("ui.trip", "KindBadge"), ios("ui.world", "TripFlags"),
+            to("java.time.LocalDate", "com.justdataplease.boringtravel.time.LocalDate\nimport com.justdataplease.boringtravel.time.parseLocalDateOrNull"),
+            "context: android.content.Context, actions: AppActions" to "context: $c.Context, actions: AppActions",
+            "runCatching { LocalDate.parse(it) }.getOrNull()" to "parseLocalDateOrNull(it)",
+            now,
+        ),
+        "ui/community/PostViewModel.kt" to listOf(
+            viewModel, scope, graph, day, to("java.io.File", "$c.File"),
+            to("com.justdataplease.boringtravel.data.repo.now", "com.justdataplease.boringtravel.time.nowMs as now"),
+            "val ROW_START: LocalDate = LocalDate.of(2000, 1, 1)" to "val ROW_START: LocalDate = com.justdataplease.boringtravel.time.localDate(2000, 1, 1)",
+        ),
+        "ui/community/CommunitySheets.kt" to listOf(
+            toast, context, to("java.time.Instant", "$c.Instant"), day, to("java.time.ZoneOffset", "$c.ZoneOffset"),
+            // Apple's rule 1.2: a way to reach the developer where content is reported (iPhone only, line 1170).
+            "            error?.let { Text(it, Modifier.padding(top = 8.dp), style = Bt.text.sub, color = c.danger) }" to
+                "            error?.let { Text(it, Modifier.padding(top = 8.dp), style = Bt.text.sub, color = c.danger) }\n" +
+                "            CommunityContact(Modifier.padding(top = 12.dp))",
+        ),
+        "ui/community/MediaViewer.kt" to listOf(
+            gone("android.net.Uri", cut), gone("android.view.Gravity", cut), gone("android.widget.FrameLayout", cut),
+            gone("android.widget.VideoView", cut), gone("androidx.compose.ui.viewinterop.AndroidView", cut), to("java.io.File", "$c.File"),
+            "DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)" to
+                "DialogProperties(usePlatformDefaultWidth = false, usePlatformInsets = false, scrimColor = Color.Black)",
+        ),
+        "ui/community/FollowParts.kt" to listOf(toast, context, actions),
+        "ui/community/ProfileScreen.kt" to listOf(toast, context, viewModel, scope, viewModelOf, collect, graph, actions),
+        "ui/community/FollowListScreen.kt" to listOf(viewModel, scope, viewModelOf, collect, graph, actions),
+        "ui/community/ProfileEditScreen.kt" to listOf(toast, context, viewModel, scope, viewModelOf, collect, graph, actions),
+    )
+}
+
+/*
  * Whole functions cut out of a file on the way in, where they reach Android (a WebView, an Activity, Android's
  * view-model and launchers, Drive): from the first text to the end of the function ("\n}\n", a top-level declaration's
  * closing brace). This app writes them again (named in each note); the rest of the file is compiled as it is. The build
  * stops if a cut no longer finds its text.
  */
 val cuts: Map<String, List<Pair<String, String>>> = mapOf(
+    // Round 24, the community: what reaches Firebase, Coil, Android's sign-in and its video view (ui/community/CommunityPhone.kt
+    // here). communityOf() is one line, so its end is its own.
+    "ui/community/CommunityParts.kt" to listOf(
+        "/** The app's community. */\n@Composable\ninternal fun communityOf()" to ".graph.community\n",
+        "/**\n * Picture [fileId] from a poster's Drive" to "\n}\n",
+        "/**\n * \"Sign in with Google to see and post\": the community's sign-in card" to "\n}\n",
+    ),
+    "ui/community/CommunityScreen.kt" to listOf(
+        "/**\n * Signed out: what the community is, three drawn postcards, and Sign in with Google." to "\n}\n",
+        "/** Post from the Community tab: the traveller's own trips" to "\n}\n",
+    ),
+    "ui/community/MediaViewer.kt" to listOf(
+        "/**\n * A video full screen, with sound: plays at once, a tap pauses or plays." to "\n}\n",
+    ),
     // PagePreview (a WebView): ui/book/PagePreview.kt here (WebKit on iPhone, the stand-in on the desktop).
     "ui/book/PageViews.kt" to listOf("@SuppressLint(\"ClickableViewAccessibility\", \"SetJavaScriptEnabled\")\n@Composable\nfun PagePreview(" to "\n}\n"),
     // BookScreen, BookEditor, MakeSheet and Context.findActivity: ios/BookScreen.kt here.
@@ -845,7 +996,7 @@ val sharedFiles = listOf(
     "google/DriveJson.kt",
     "google/DriveExportTooLargeException.kt",
     "backup/BackupVideos.kt",
-) + aiFiles + siteFiles + clipFiles + bookFiles
+) + aiFiles + siteFiles + clipFiles + bookFiles + communityFiles
 
 /*
  * A few lines are rewritten on the way in, where a shared file calls Java for something Kotlin has too (iPhone has no
@@ -1102,7 +1253,7 @@ val rewrites: Map<String, List<Pair<String, String>>> = mapOf(
         "import java.time.LocalDate" to "import com.justdataplease.boringtravel.time.LocalDate\nimport com.justdataplease.boringtravel.compat.isAfter",
         ".minByOrNull { it.startDate!! }" to ".minByOrNull { it.startDate!!.toEpochDay() }",
     ),
-) + aiRewrites + siteRewrites + clipRewrites + bookRewrites
+) + aiRewrites + siteRewrites + clipRewrites + bookRewrites + communityRewrites
 
 /** A rule that names a whole import line replaces only that line; any other rule replaces its text where it stands. */
 fun rewrite(line: String, rules: List<Pair<String, String>>): String = rules.fold(line) { text, (old, new) ->
@@ -1112,7 +1263,7 @@ fun rewrite(line: String, rules: List<Pair<String, String>>): String = rules.fol
 val sharedSources = tasks.register<Sync>("sharedSources") {
     into(layout.buildDirectory.dir("sharedSources"))
     // Gradle can't see a change to the rewriting rules; raise this when one changes, so the copy runs again.
-    inputs.property("rules", 31)
+    inputs.property("rules", 32)
     from(androidMain.resolve("java")) {
         sharedFiles.filterNot { it in rewrites }.forEach { include("$pkg/$it") }
     }
@@ -1222,12 +1373,17 @@ val firebaseIds = tasks.register("firebaseIds") {
  * its signing key); and `apple.signIn` (BORINGTRAVEL_APPLE_SIGN_IN) "true" once the app's Apple capability and Firebase's
  * Apple provider are set up (Sign in with Apple signs in to the owner's Firebase project, which also revokes Apple's
  * token when the account is deleted). Empty by default: then Welcome, Me and Backup & sync say Google sign-in isn't set
- * up in this build, and Sign in with Apple isn't offered.
+ * up in this build, and Sign in with Apple isn't offered. Since round 24 also `drive.apiKey`
+ * (BORINGTRAVEL_DRIVE_API_KEY): the owner's Google Cloud API key restricted to the Drive API and this app's bundle id,
+ * which reads community posts' pictures and clips from their posters' Drives by link (Android's PublicDrive key, sent with
+ * the X-Ios-Bundle-Identifier header); without it they come from Google's public download address, as Android's build
+ * without a key reads them.
  */
 val accountIds = tasks.register("accountIds") {
     val values = linkedMapOf(
         "GOOGLE_IOS_CLIENT_ID" to localValue("google.iosClientId", "BORINGTRAVEL_GOOGLE_IOS_CLIENT_ID"),
         "APPLE_SIGN_IN" to localValue("apple.signIn", "BORINGTRAVEL_APPLE_SIGN_IN"),
+        "DRIVE_API_KEY" to localValue("drive.apiKey", "BORINGTRAVEL_DRIVE_API_KEY"),
     )
     inputs.properties(values)
     val out = layout.buildDirectory.dir("accountIds")
@@ -1408,6 +1564,26 @@ val androidBookTests: Map<String, List<Pair<String, String>>> = listOf(
     )
 }
 
+/*
+ * The Android app's own tests of the community (round 24), in its package against the files read in above, with its
+ * in-memory repository (FakeCommunityRepository): links, the Following feed's merged pages, follows and their keeper,
+ * the leaderboard and the hearts, the avatar, a trip as a post carries it, Copy this trip, usernames. Their Locale is
+ * compat's (the feed's texts take compat's), their days java.time's (the engine's days are java.time's on the desktop);
+ * the usernames' test reads the Android app's own Firestore rules.
+ */
+val androidCommunityTests: Map<String, List<Pair<String, String>>> = run {
+    val rules = androidMain.resolve("../../../firebase/firestore.rules").normalize().invariantSeparatorsPath
+    listOf(
+        "CommunityLinksTest.kt", "FakeCommunityRepository.kt", "FollowingFeedTest.kt", "FollowKeeperTest.kt", "FollowsTest.kt",
+        "LeaderboardTest.kt", "ProfileAvatarTest.kt", "SharedTripsTest.kt", "TripCopyTest.kt", "UsernamesTest.kt",
+    ).associate { name ->
+        "community/$name" to listOf(
+            "import java.util.Locale" to "import com.justdataplease.boringtravel.compat.Locale",
+            "java.io.File(\"../firebase/firestore.rules\")" to "java.io.File(\"$rules\")",
+        )
+    }
+}
+
 fun testRewrite(line: String): String = when {
     line.startsWith("package com.justdataplease.boringtravel.") ->
         "package com.justdataplease.boringtravel.ios\n\nimport com.justdataplease.boringtravel.places.*"
@@ -1537,8 +1713,8 @@ val androidReferenceSources = tasks.register<Sync>("androidReferenceSources") {
 
 val androidTestSources = tasks.register<Sync>("androidTestSources") {
     into(layout.buildDirectory.dir("androidTests"))
-    inputs.property("rules", 15)
-    (androidExportTests + androidAiTests + androidSiteTests + androidClipTests + androidBookTests).forEach { (file, rules) ->
+    inputs.property("rules", 16)
+    (androidExportTests + androidAiTests + androidSiteTests + androidClipTests + androidBookTests + androidCommunityTests).forEach { (file, rules) ->
         from(androidMain.parentFile.resolve("test/java/$pkg")) {
             include(file)
             filter { line: String -> rewrite(line, rules) }
@@ -1563,7 +1739,7 @@ val androidTestSources = tasks.register<Sync>("androidTestSources") {
     doLast {
         val missing = androidTests.filterNot { destinationDir.resolve("$pkg/ios/android/$it").isFile } +
             androidTestsAsTheyAre.filterNot { destinationDir.resolve("$pkg/$it").isFile } +
-            (androidExportTests + androidAiTests + androidSiteTests + androidClipTests + androidBookTests).keys.filterNot { destinationDir.resolve("$pkg/$it").isFile }
+            (androidExportTests + androidAiTests + androidSiteTests + androidClipTests + androidBookTests + androidCommunityTests).keys.filterNot { destinationDir.resolve("$pkg/$it").isFile }
         check(missing.isEmpty()) { "Not in the Android app's tests any more: $missing" }
     }
 }

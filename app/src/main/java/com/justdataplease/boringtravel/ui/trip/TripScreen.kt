@@ -60,7 +60,7 @@ private class Loaded(val trip: Trip?)
 
 /**
  * One trip in trip mode (design boards "Plan · day by day"): back, "Day 14 of 31" (or the dates), the trip's name in
- * the display face, Plan with AI and the trip's menu; then the section on show. The sections are the bottom bar's
+ * the display face and the trip's menu; then the section on show. The sections are the bottom bar's
  * items while a trip is open (Plan · Journal · Map · Media, see TripNav); [tab] and the plan's [planDay] live in the
  * trip's back-stack entry (AppNav).
  */
@@ -163,7 +163,7 @@ private fun TripHeader(
         }
         // A shared trip shows who it is shared with; the button opens Travel together.
         if (sharedWith != null) SharedBadge(sharedWith, onTogether)
-        BtIconButton(BtIcons.Sparkle, "Plan with AI", { actions.planner(tripId, chat = true) })
+        // The AI chat is the Plan's Chat button, beside Add (owner, 19 Nov 2026: option A, "instead of Ask AI have Chat").
         Box {
             BtIconButton(BtIcons.More, "Trip options", { menuOpen = true })
             DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }, containerColor = Bt.colors.surface) {

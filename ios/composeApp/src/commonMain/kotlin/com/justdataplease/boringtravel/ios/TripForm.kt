@@ -92,6 +92,8 @@ fun TripFormScreen(
     startOn: LocalDate? = null,
     onNewTripShown: () -> Unit = {},
     settings: AppSettings? = null,
+    /** "Start from a community trip": the Community tab (since round 24). */
+    onCommunity: () -> Unit = {},
 ) {
     val saved = remember(book, tripId) { tripId?.let(book::trip) }
     val kit = LocalMediaKit.current
@@ -189,7 +191,7 @@ fun TripFormScreen(
                 Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 20.dp).padding(bottom = 24.dp).navigationBarsPadding()) {
                     NewTripChoices(
                         onQuestions = { onPlanner(PlannerStart.QUESTIONS) }, onPictures = { onPlanner(PlannerStart.PICTURES) },
-                        onLink = { onPlanner(PlannerStart.LINK) }, onReadyMade = onReadyMade, onMyself = { manual = true },
+                        onLink = { onPlanner(PlannerStart.LINK) }, onReadyMade = onReadyMade, onCommunity = onCommunity, onMyself = { manual = true },
                     )
                 }
             } else Column(
@@ -379,11 +381,13 @@ private fun CoverPlaceholder(modifier: Modifier = Modifier, kind: SceneKind? = n
 
 /**
  * How a new trip starts, in the Android app's order: Make it myself in its own panel first, then "Or", the three AI
- * ways (each opens the one planner chat at its step), "Or" and a ready-made trip. The community trips come with the
- * community.
+ * ways (each opens the one planner chat at its step), "Or", a ready-made trip and (since round 24) a community trip: the
+ * Community tab, where a posted trip's Copy this trip makes it yours.
  */
 @Composable
-private fun NewTripChoices(onQuestions: () -> Unit, onPictures: () -> Unit, onLink: () -> Unit, onReadyMade: () -> Unit, onMyself: () -> Unit) {
+private fun NewTripChoices(
+    onQuestions: () -> Unit, onPictures: () -> Unit, onLink: () -> Unit, onReadyMade: () -> Unit, onCommunity: () -> Unit, onMyself: () -> Unit,
+) {
     val panel = PaddingValues(start = 16.dp, end = 12.dp, top = 2.dp, bottom = 2.dp)
     BtCard(Modifier.padding(top = 4.dp), padding = panel) {
         StartChoice(BtIcons.Edit, "Make it myself", "Name, route and dates.", onMyself)
@@ -399,6 +403,9 @@ private fun NewTripChoices(onQuestions: () -> Unit, onPictures: () -> Unit, onLi
     OrLine()
     BtCard(padding = panel) {
         StartChoice(BtIcons.World, "Start from a ready-made trip", "Day-by-day plans for popular places. Pick one and set your dates.", onReadyMade)
+        BtDivider()
+        // Owner: "have also a 2nd, a community trip": the Community tab, where a posted trip's Copy this trip makes it yours.
+        StartChoice(BtIcons.Community, "Start from a community trip", "Trips other travellers posted. Copy one and set your dates.", onCommunity)
     }
 }
 

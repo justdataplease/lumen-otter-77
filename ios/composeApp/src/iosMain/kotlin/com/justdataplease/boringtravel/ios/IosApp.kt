@@ -77,6 +77,21 @@ object IosApp {
         }
     }
 
+    /**
+     * The community (round 24): Firestore's and Firebase Auth's REST APIs on this build's Firebase ids (without them it
+     * isn't available in this build), its account in the Keychain beside Google's tokens, the lists, pictures and clips
+     * kept in the caches, the writes made without a connection in the settings, the pictures read by link with the
+     * build's Drive API key (`drive.apiKey`). No App Check token yet (the owner's Firebase iPhone app with App Attest).
+     */
+    val community: com.justdataplease.boringtravel.community.Community by lazy {
+        com.justdataplease.boringtravel.community.Community.make(
+            web.net, com.justdataplease.boringtravel.firebase.FirebaseSetup.config, IosKeychain(IosKeychain.ACCOUNT_SERVICE), google,
+            web.cache, settingsFile, MainScope(), bundleId = NSBundle.mainBundle.bundleIdentifier,
+            driveKey = com.justdataplease.boringtravel.google.AccountIds.DRIVE_API_KEY,
+            driveConnected = { core.settings.driveConnected }, deleteDriveFile = { id -> google.drive.delete(id) },
+        ).also { c -> google.onSignedOut = { c.signOut() } }
+    }
+
     /** The Live Activity's Swift side (RecordingActivityBridge), handed over at the start. */
     internal var recordingActivity: NativeRecordingActivity? = null
 

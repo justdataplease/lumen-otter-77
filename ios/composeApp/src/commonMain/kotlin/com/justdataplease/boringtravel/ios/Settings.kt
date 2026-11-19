@@ -152,7 +152,19 @@ class AppSettings(private val file: SettingsFile) {
         const val RESTORE_ASKED = "restoreAsked"
         const val DRIVE_FOLDERS = "driveFolders"
         const val DAILY_TRIES = "dailyBackupTries"
+        // The community's rules agreed to on this phone (Android's community_rules_accepted: never in a backup).
+        const val COMMUNITY_RULES = "communityRulesAccepted"
     }
+
+    private var communityRulesState by mutableStateOf(file.read(K.COMMUNITY_RULES) == "true")
+
+    /** The community's rules, agreed to once before the first profile or post (round 24; this phone's own answer). */
+    var communityRulesAccepted: Boolean
+        get() = communityRulesState
+        set(value) {
+            communityRulesState = value
+            file.write(K.COMMUNITY_RULES, if (value) "true" else null)
+        }
 
     private var accountEmailState by mutableStateOf(file.read(K.ACCOUNT_EMAIL))
     private var accountNameState by mutableStateOf(file.read(K.ACCOUNT_NAME))
@@ -331,6 +343,9 @@ class AppSettings(private val file: SettingsFile) {
             ridesText = value.encode()
             file.write(K.RIDES, ridesText)
         }
+
+    /** Whether the traveller was ever picked (Android's Settings.travellerChosen: a new community picture starts as it). */
+    val travellerChosen: Boolean get() = travellerText != null
 
     private var travellerText by mutableStateOf(file.read(K.TRAVELLER) ?: carried().traveller)
     private var ridesText by mutableStateOf(file.read(K.RIDES) ?: carried().rides)

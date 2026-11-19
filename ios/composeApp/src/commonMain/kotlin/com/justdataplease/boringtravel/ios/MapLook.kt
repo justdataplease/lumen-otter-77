@@ -91,7 +91,7 @@ object MapLayers {
      * [style] with the app's sources (empty until filled) and layers on top of everything. The stops' names need the
      * style's glyphs: without them (the plain stand-in) or without [stopNames] they are left out.
      */
-    fun addTo(style: String, c: MapColors, stopNames: Boolean): String {
+    fun addTo(style: String, c: MapColors, stopNames: Boolean, compact: Boolean = false): String {
         val root = Json.parseToJsonElement(style) as JsonObject
         val sources = LinkedHashMap((root["sources"] as? JsonObject).orEmpty())
         for (id in SOURCES) sources[id] = buildJsonObject {
@@ -99,18 +99,42 @@ object MapLayers {
             put("data", Json.parseToJsonElement(EMPTY))
         }
         val names = stopNames && root["glyphs"] != null
-        val layers = (root["layers"] as? JsonArray).orEmpty() + layers(c, names)
+        val layers = (root["layers"] as? JsonArray).orEmpty() + layers(c, names, compact)
         return JsonObject(root + mapOf("sources" to JsonObject(sources), "layers" to JsonArray(layers))).toString()
     }
 
-    /** The app's layers, bottom to top: the planned route under the travelled one, pins, names, notes, "now". */
-    fun layers(c: MapColors, stopNames: Boolean): List<JsonElement> = buildList {
+    /**
+     * The app's layers, bottom to top: the planned route under the travelled one, pins, names, notes, "now". [compact]
+     * is Android's compactRoute (a community post's small map, round 24): the route thin and dashed, every place one
+     * small dot in the route's colour instead of a pin.
+     */
+    fun layers(c: MapColors, stopNames: Boolean, compact: Boolean = false): List<JsonElement> = buildList {
         add(line(L_PLANNED, S_PLANNED, c.plan, 2.6, opacity = 0.85, dash = listOf(2.2, 2.2), join = true))
         val jump = buildJsonArray { add("=="); add(buildJsonArray { add("get"); add(MapGeoJson.P_JUMP) }); add(true) }
-        add(line(L_ROUTE_JUMP, S_ROUTES, c.route, 2.5, opacity = 0.8, dash = listOf(2.0, 2.0), filter = jump))
-        add(line(L_ROUTE, S_ROUTES, c.route, 4.0, join = true, filter = buildJsonArray { add("!"); add(jump) }))
-        add(pin(L_PLANS, S_PLANS, IMG_PLAN, padding = 5.0))
-        add(pin(L_STOPS, S_STOPS, IMG_STOP, padding = 6.0))
+        if (compact) {
+            add(line(L_ROUTE_JUMP, S_ROUTES, c.route, 2.0, opacity = 0.72, dash = listOf(3.0, 2.5), filter = jump))
+            add(line(L_ROUTE, S_ROUTES, c.route, 2.0, opacity = 0.72, dash = listOf(3.0, 2.5), join = true, filter = buildJsonArray { add("!"); add(jump) }))
+            // One normalized dot over each saved place; no connector is invented when no route was recorded.
+            listOf(L_PLANS to S_PLANS, L_STOPS to S_STOPS, L_ENTRIES to S_ENTRIES).forEach { (id, source) ->
+                add(buildJsonObject {
+                    put("id", id)
+                    put("type", "circle")
+                    put("source", source)
+                    putJsonObject("paint") {
+                        put("circle-radius", 3.2)
+                        put("circle-color", MapTint.hex(c.route))
+                        put("circle-stroke-color", MapTint.hex(c.surface))
+                        put("circle-stroke-width", 1.2)
+                        put("circle-opacity", 0.9)
+                    }
+                })
+            }
+        } else {
+            add(line(L_ROUTE_JUMP, S_ROUTES, c.route, 2.5, opacity = 0.8, dash = listOf(2.0, 2.0), filter = jump))
+            add(line(L_ROUTE, S_ROUTES, c.route, 4.0, join = true, filter = buildJsonArray { add("!"); add(jump) }))
+            add(pin(L_PLANS, S_PLANS, IMG_PLAN, padding = 5.0))
+            add(pin(L_STOPS, S_STOPS, IMG_STOP, padding = 6.0))
+        }
         if (stopNames) add(buildJsonObject {
             put("id", L_STOP_NAMES)
             put("type", "symbol")
@@ -129,7 +153,7 @@ object MapLayers {
                 put("text-halo-width", 1.5)
             }
         })
-        add(pin(L_ENTRIES, S_ENTRIES, IMG_ENTRY, padding = null))
+        if (!compact) add(pin(L_ENTRIES, S_ENTRIES, IMG_ENTRY, padding = null))
         add(buildJsonObject {
             put("id", L_ME_HALO)
             put("type", "circle")
@@ -213,22 +237,22 @@ object MapStyles {
     fun maxZoom(style: MapStyle): Double =
         if (style == MapStyle.Earth) com.justdataplease.boringtravel.clip.ImageryTiles.MAX_ZOOM + EARTH_EXTRA_ZOOM else DEFAULT_MAX_ZOOM
 
-    fun build(style: MapStyle, base: String?, dark: Boolean, c: MapColors, stopNames: Boolean): MapStyleBuild {
+    fun build(style: MapStyle, base: String?, dark: Boolean, c: MapColors, stopNames: Boolean, compact: Boolean = false): MapStyleBuild {
         val built = runCatching {
             when (style) {
                 MapStyle.Terrain -> base?.let { MapStyleJson.terrain(it, dark) }
                 MapStyle.Earth -> MapStyleJson.earth(base)
                 MapStyle.Street, MapStyle.Globe -> base
             }
-        }.getOrNull() ?: return offline(c)
+        }.getOrNull() ?: return offline(c, compact)
         val tint = MapTint(c.land, c.sea, c.park, c.ink)
-        return runCatching { MapStyleBuild(MapLayers.addTo(MapStyleJson.tinted(built, tint), c, stopNames), offline = false) }.getOrElse { offline(c) }
+        return runCatching { MapStyleBuild(MapLayers.addTo(MapStyleJson.tinted(built, tint), c, stopNames, compact), offline = false) }.getOrElse { offline(c, compact) }
     }
 
     /** Just the look's land colour: no tiles and no glyphs (so no stop names), with the app's layers on it. */
-    fun offline(c: MapColors): MapStyleBuild {
+    fun offline(c: MapColors, compact: Boolean = false): MapStyleBuild {
         val plain = """{"version":8,"name":"offline","sources":{},"layers":[{"id":"background","type":"background","paint":{"background-color":"${MapTint.hex(c.land)}"}}]}"""
-        return MapStyleBuild(MapLayers.addTo(plain, c, stopNames = false), offline = true)
+        return MapStyleBuild(MapLayers.addTo(plain, c, stopNames = false, compact = compact), offline = true)
     }
 }
 

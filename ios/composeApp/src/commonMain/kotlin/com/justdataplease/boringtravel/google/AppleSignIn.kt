@@ -43,8 +43,11 @@ interface AppleSignIn {
 
 class AppleSignInException(message: String) : Exception(message)
 
-/** The account in the owner's Firebase project: its id, a token for an hour, the refresh token, the email Apple shared. */
-data class FirebaseUser(val localId: String, val idToken: String, val refreshToken: String, val email: String?)
+/**
+ * The account in the owner's Firebase project: its id, a token for an hour, the refresh token, the email Apple (or
+ * Google) shared, and the name Google gave (the community's account).
+ */
+data class FirebaseUser(val localId: String, val idToken: String, val refreshToken: String, val email: String?, val name: String? = null)
 
 /**
  * Firebase Auth's REST API (Identity Toolkit and Secure Token) for the Apple account, with the build's web API key
@@ -76,6 +79,47 @@ class FirebaseAuthRest(
             idToken = o.text("idToken") ?: throw IOException(APPLE_FAILED),
             refreshToken = o.text("refreshToken") ?: throw IOException(APPLE_FAILED),
             email = o.text("email"),
+        )
+    }
+
+    /**
+     * Signs in to Firebase with a Google ID token (round 24: the community's account, Android's Community.signInWith with
+     * GoogleAuthProvider). Firebase takes a token whose audience is an OAuth client of its own Google Cloud project, or one
+     * it allows: the owner's iPhone client.
+     */
+    suspend fun signInWithGoogle(googleIdToken: String): FirebaseUser {
+        val body = buildJsonObject {
+            put("postBody", GoogleOAuth.form("id_token" to googleIdToken, "providerId" to "google.com"))
+            put("requestUri", "http://localhost")
+            put("returnIdpCredential", true)
+            put("returnSecureToken", true)
+        }.toString()
+        val o = post("$identity/v1/accounts:signInWithIdp", body)
+        return FirebaseUser(
+            localId = o.text("localId") ?: throw IOException(COMMUNITY_FAILED),
+            idToken = o.text("idToken") ?: throw IOException(COMMUNITY_FAILED),
+            refreshToken = o.text("refreshToken") ?: throw IOException(COMMUNITY_FAILED),
+            email = o.text("email"),
+            name = o.text("displayName"),
+        )
+    }
+
+    /** The account behind [refreshToken] as Secure Token gives it again: its id, a fresh ID token, the refresh token to keep. */
+    suspend fun refreshUser(refreshToken: String): FirebaseUser {
+        val answer = net.call(
+            NetCall(
+                "POST", "$secureToken/v1/token?key=${config.apiKey}", headers(),
+                GoogleOAuth.form("grant_type" to "refresh_token", "refresh_token" to refreshToken).encodeToByteArray(),
+                "application/x-www-form-urlencoded", timeoutMs = 30_000,
+            ),
+        )
+        val o = parse(answer.text())
+        if (!answer.ok) throw FirebaseAuthException(answer.code, errorOf(o))
+        return FirebaseUser(
+            localId = o.text("user_id") ?: throw IOException(COMMUNITY_FAILED),
+            idToken = o.text("id_token") ?: throw IOException(COMMUNITY_FAILED),
+            refreshToken = o.text("refresh_token") ?: refreshToken,
+            email = null,
         )
     }
 
@@ -128,6 +172,9 @@ class FirebaseAuthRest(
 
     companion object {
         const val APPLE_FAILED = "Sign in with Apple didn't work. Try again."
+
+        /** Android's Community.signInWith failure. */
+        const val COMMUNITY_FAILED = "Couldn't sign in to the community. Try again."
 
         /** A nonce of 32 URL-safe characters from [random] bytes (Firebase's Sign in with Apple guide). */
         fun nonce(random: ByteArray): String {

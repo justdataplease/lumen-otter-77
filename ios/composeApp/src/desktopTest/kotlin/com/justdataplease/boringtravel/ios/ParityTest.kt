@@ -208,7 +208,7 @@ class ParityTest {
             onNodeWithText("December 2026").assertExists()
             // (Me has a "Calendar" of its own, Plan view's: away through Community.)
             tab("Community").performClick()
-            onNodeWithText("Not on iPhone yet.").assertExists()
+            onNodeWithText("Not in this build").assertExists()
             // Back on the Calendar: still December (Android's restoreState).
             tab("Calendar").performClick()
             onNodeWithText("December 2026").assertExists()

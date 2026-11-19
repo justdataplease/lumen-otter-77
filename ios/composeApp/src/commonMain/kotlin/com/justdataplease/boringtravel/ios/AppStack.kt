@@ -173,6 +173,10 @@ object AppRestore {
             Place.Tracking -> put("p", "tracking")
             is Place.Clip -> put("p", "clip").also { put("trip", place.tripId) }
             is Place.Book -> put("p", "book").also { put("trip", place.tripId) }
+            is Place.CommunityPost -> put("p", "communityPost").also { put("post", place.postId) }
+            is Place.CommunityProfile -> put("p", "communityProfile").also { put("uid", place.uid) }
+            is Place.CommunityFollows -> put("p", "communityFollows").also { put("uid", place.uid); put("followers", place.followers) }
+            Place.CommunityProfileEdit -> put("p", "communityProfileEdit")
         }
     }
 
@@ -201,6 +205,10 @@ object AppRestore {
             "tracking" -> Place.Tracking
             "clip" -> trip()?.let(Place::Clip)
             "book" -> trip()?.let(Place::Book)
+            "communityPost" -> s("post")?.let(Place::CommunityPost)
+            "communityProfile" -> s("uid")?.let(Place::CommunityProfile)
+            "communityFollows" -> s("uid")?.let { Place.CommunityFollows(it, (o["followers"] as? JsonPrimitive)?.contentOrNull != "false") }
+            "communityProfileEdit" -> Place.CommunityProfileEdit
             else -> null
         }
     }

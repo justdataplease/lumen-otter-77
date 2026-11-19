@@ -149,6 +149,8 @@ fun BtMap(
     focus: BBox? = null,
     interactive: Boolean = true,
     mapStyle: MapStyle = MapStyle.Street,
+    /** Android's compactRoute: the opening card's small map (a community post's plan): thin dashed lines and dots. */
+    compactRoute: Boolean = false,
     onTap: (MapTap) -> Unit = {},
 ) {
     val kit = LocalMapKit.current
@@ -162,16 +164,17 @@ fun BtMap(
     var attempt by remember { mutableIntStateOf(0) }
     var style by remember { mutableStateOf<MapStyleBuild?>(null) }
     var loadedJson by remember { mutableStateOf<String?>(null) }
-    LaunchedEffect(dark, colors, mapStyle, showStopNames, attempt) {
+    LaunchedEffect(dark, colors, mapStyle, showStopNames, attempt, compactRoute) {
         style = null
         val base = MapBaseStyles.base(web, dark)
-        style = MapStyles.build(mapStyle, base, dark, colors, showStopNames)
+        style = MapStyles.build(mapStyle, base, dark, colors, showStopNames, compactRoute)
     }
     val fitter = remember { MapFitter() }
     val latestData by rememberUpdatedState(data)
     val latestTap by rememberUpdatedState(onTap)
     val latestColors by rememberUpdatedState(colors)
     val latestInteractive by rememberUpdatedState(interactive)
+    val latestCompact by rememberUpdatedState(compactRoute)
     val events = remember(fitter) {
         MapEvents(
             styleLoaded = { json ->
@@ -179,7 +182,7 @@ fun BtMap(
                 fitter.styleReady()
             },
             // MapLibre couldn't load it (no network on the first open): the plain land, so the routes still show.
-            styleFailed = { json -> if (style?.json == json && style?.offline == false) style = MapStyles.offline(latestColors) },
+            styleFailed = { json -> if (style?.json == json && style?.offline == false) style = MapStyles.offline(latestColors, latestCompact) },
             cameraMoved = fitter::cameraMoved,
             tapped = { x, y -> if (latestInteractive) fitter.hit(latestData, x, y)?.let { latestTap(it) } },
             picked = { if (latestInteractive) latestTap(it) },
@@ -195,7 +198,7 @@ fun BtMap(
     LaunchedEffect(fitKey) { if (fitKey != null) fitter.fitAll() }
     LaunchedEffect(focus) { fitter.focus(focus) }
     val sources = remember(data) { MapLayers.sources(data) }
-    val scene = MapScene(style, data, sources, colors, MapStyles.maxZoom(mapStyle), interactive, showStopNames)
+    val scene = MapScene(style, data, sources, colors, MapStyles.maxZoom(mapStyle), interactive, showStopNames, compactRoute)
     val state = when {
         style == null || loadedJson != style?.json -> MapLoadState.Loading
         style?.offline == true -> MapLoadState.RouteOnly

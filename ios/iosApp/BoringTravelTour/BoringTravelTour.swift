@@ -29,6 +29,10 @@ final class BoringTravelTour: XCTestCase {
         if welcome.exists {
             snap("00-welcome")
             if welcome.isHittable { welcome.tap() }
+            // Since parity round 1 the screens fade: Trips' trip ideas are there under Welcome while it fades out, so
+            // the picture of Trips waits for Welcome's button to go (Mac run of 19 Nov 2026: "01-trips" showed Welcome).
+            gone("Use without an account", in: app, wait: 10)
+            gone("Continue", in: app, wait: 10)
         }
 
         // Trips, with the trip ideas.
@@ -44,6 +48,15 @@ final class BoringTravelTour: XCTestCase {
         if tap("Me", in: app), shows("Your space", in: app) { snap("02-me") }
         _ = tap("Trips", in: app)
         if tap("Calendar", in: app), shows("Month", in: app) { snap("03-calendar") }
+        _ = tap("Trips", in: app)
+        // Round 24: the Community tab, signed out (what the community is over its sign-in card; the tour never taps Sign
+        // in) or, in a build without the community's Firebase ids, "Not in this build". Neither asks anything. It waits
+        // for words at the top of the page (the Simulator doesn't report Compose's controls below the fold); the tab has
+        // no page of its own on top, so Trips is tapped straight after.
+        if tap("Community", in: app),
+            shows("Trips, clips and photo albums", in: app, wait: 10) || shows("Not in this build", in: app, wait: 5) {
+            snap("03b-community")
+        }
         _ = tap("Trips", in: app)
         guard idea.waitForExistence(timeout: 15) else { return }
 
@@ -100,8 +113,14 @@ final class BoringTravelTour: XCTestCase {
         // The trip's map (MapLibre): its Travelled · Planned pill and the leg sheet are the app's own, so they show
         // whether or not the tiles load. The trip isn't on yet: Travelled has nothing; Planned has the plan's places.
         if tap("Map", in: app), shows("Travelled", in: app) {
+            // The map's style loads cold the first time ("Loading map"): the picture waits for it, up to 30 s, and is
+            // taken anyway if it never goes (Mac run of 19 Nov 2026: both pictures showed "Loading map").
+            gone("Loading map", in: app, wait: 30)
             snap("08b-trip-map")
-            if tap("Planned", in: app) { snap("08c-trip-map-planned") }
+            if tap("Planned", in: app) {
+                gone("Loading map", in: app, wait: 10)
+                snap("08c-trip-map-planned")
+            }
         }
 
         // Back on Trips: the new trip as a ticket with its countdown.
@@ -118,9 +137,13 @@ final class BoringTravelTour: XCTestCase {
         }
 
         // Me › Backup & sync: Google Drive's card on top (since round 23; without Google's client it only says so, and
-        // nothing on the page is tapped) and the backup file's buttons below.
-        if tap("Me", in: app), tap("Backup & sync", in: app), shows("Save a file", in: app) {
-            snap("11-backup")
+        // nothing on the page is tapped), Last backup under it, the backup file's buttons below the fold. It waits for
+        // "Last backup", on screen when the page opens: the Simulator doesn't report Compose's controls below the fold, so
+        // "Save a file" was never found and the Back below never tapped (Mac run of 19 Nov 2026), and since each tab
+        // keeps its pages, Me then reopened on Backup & sync and Route tracking's step had nothing to tap. Back is
+        // tapped whatever the page showed, so Me is on its first page again.
+        if tap("Me", in: app), tap("Backup & sync", in: app) {
+            if shows("Last backup", in: app) { snap("11-backup") }
             _ = tap("Back", in: app)
         }
 

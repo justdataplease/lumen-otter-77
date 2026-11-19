@@ -80,11 +80,18 @@ class GoogleAccount(
     private var tokenAt = 0L
     private var tokenLife = TOKEN_AGE_MS
 
+    /** The account's last Google ID token (from the sign-in page or a refresh) and when it came: the community's sign-in. */
+    private var idToken: String? = null
+    private var idTokenAt = 0L
+
     /** Drive's REST client with this account's tokens; its folders' ids are kept in [settings]. */
     val drive = RestDriveApi(net, this, connected = { settings.driveConnected }, files, retryWait = retryWait, memory = settings.driveFolders, wait = wait)
 
     /** Runs after Drive is connected or disconnected (the app plans its daily backup there). */
     var onDriveChanged: suspend () -> Unit = {}
+
+    /** Runs after [signOut] (since round 24 the community signs out with the account: Android's AppGraph onSignedOut). */
+    var onSignedOut: suspend () -> Unit = {}
 
     /** False when this build has no Google iPhone client: sign-in and Drive are hidden and the app stays local. */
     val signInConfigured: Boolean get() = clientId.isNotBlank()
@@ -187,10 +194,11 @@ class GoogleAccount(
 
     /**
      * For Delete account with an Apple account (Apple 5.1.1(v)): Apple's sheet once more for a fresh one-time code, then
-     * Firebase revokes Apple's token with it and the Firebase account is deleted. Null when done (or there was no Apple
-     * account); else why it didn't happen, and nothing was deleted.
+     * [before] (since round 24 the community's data, while the account is still there to delete it as), then Firebase
+     * revokes Apple's token with it and the Firebase account is deleted. Null when done (or there was no Apple account);
+     * else why it didn't happen ([before]'s word when it stopped), and the account stays.
      */
-    suspend fun deleteAppleAccount(): String? {
+    suspend fun deleteAppleAccount(before: suspend () -> String? = { null }): String? {
         if (provider != AppSettings.PROVIDER_APPLE) return null
         val sheet = apple ?: return null
         val nonce = FirebaseAuthRest.nonce(random(32))
@@ -205,6 +213,7 @@ class GoogleAccount(
         return try {
             // A fresh sign-in first: Firebase deletes only an account signed in a moment ago.
             val user = firebaseAuth.signInWithApple(credential.identityToken, nonce)
+            before()?.let { return it }
             firebaseAuth.revokeApple(user.idToken, code)
             firebaseAuth.delete(user.idToken)
             keys.put(APPLE_REFRESH, null)
@@ -218,9 +227,43 @@ class GoogleAccount(
         }
     }
 
+    /**
+     * A Google ID token of the signed-in Google account, for the community's Firebase sign-in (round 24; the Android
+     * app's GoogleAccount.freshIdToken, its Credential Manager's quiet sign-in): the last one while it is under 45
+     * minutes old, else a new one from Google's token endpoint with the refresh token (the grant has openid, so the
+     * answer carries one). Null without a Google account, or when Google gives none (offline, the grant revoked).
+     */
+    suspend fun freshIdToken(): String? {
+        if (!signInConfigured || provider != AppSettings.PROVIDER_GOOGLE) return null
+        lock.withLock { idToken?.takeIf { now() - idTokenAt < ID_TOKEN_AGE_MS }?.let { return it } }
+        val refresh = keys.get(REFRESH) ?: return null
+        val answer = try {
+            net.call(NetCall("POST", GoogleOAuth.TOKEN, body = GoogleOAuth.refreshForm(clientId, refresh).encodeToByteArray(), contentType = FORM, timeoutMs = 30_000))
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            return null
+        }
+        val t = (GoogleOAuth.tokens(answer.code, answer.text()) as? GoogleOAuth.TokenAnswer.Ok)?.tokens ?: return null
+        lock.withLock {
+            t.refreshToken?.let { keys.put(REFRESH, it) }
+            token = t.accessToken
+            tokenAt = now()
+            tokenLife = lifeOf(t.expiresInS)
+            t.idToken?.let {
+                idToken = it
+                idTokenAt = now()
+            }
+        }
+        return t.idToken
+    }
+
     /** Signs out on this phone: the account is forgotten and Drive stops until the owner connects again; Google keeps the grant. */
     suspend fun signOut() {
-        lock.withLock { token = null }
+        lock.withLock {
+            token = null
+            idToken = null
+        }
         keys.put(REFRESH, null)
         keys.put(APPLE_REFRESH, null)
         settings.driveAccount = null
@@ -229,6 +272,8 @@ class GoogleAccount(
         settings.driveConnected = false
         needsReconnect = false
         onDriveChanged()
+        // Signing out of the app signs out of the community too (Android's AppGraph: onSignedOut).
+        onSignedOut()
     }
 
     /**
@@ -277,6 +322,10 @@ class GoogleAccount(
                 token = t.tokens.accessToken
                 tokenAt = now()
                 tokenLife = lifeOf(t.tokens.expiresInS)
+                t.tokens.idToken?.let {
+                    idToken = it
+                    idTokenAt = now()
+                }
                 needsReconnect = false
                 t.tokens.accessToken
             }
@@ -326,13 +375,17 @@ class GoogleAccount(
         }
     }
 
-    /** Keeps what Google gave: the refresh token in the Keychain, the access token for this run. */
+    /** Keeps what Google gave: the refresh token in the Keychain, the access and ID tokens for this run. */
     private suspend fun keep(grant: Grant.Given) {
         grant.tokens.refreshToken?.let { keys.put(REFRESH, it) }
         lock.withLock {
             token = grant.tokens.accessToken
             tokenAt = now()
             tokenLife = lifeOf(grant.tokens.expiresInS)
+            grant.tokens.idToken?.let {
+                idToken = it
+                idTokenAt = now()
+            }
         }
         needsReconnect = false
     }
@@ -369,6 +422,9 @@ class GoogleAccount(
 
         private const val FORM = "application/x-www-form-urlencoded"
         private const val TOKEN_AGE_MS = 45 * 60 * 1000L
+
+        /** Google's ID tokens last an hour; Firebase takes one only while it is valid. */
+        private const val ID_TOKEN_AGE_MS = 45 * 60 * 1000L
     }
 }
 

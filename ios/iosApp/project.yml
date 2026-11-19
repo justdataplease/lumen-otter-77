@@ -11,13 +11,20 @@ settings:
     # The Android app's versionName (android-boringtravel/app/build.gradle.kts), which Me › Version shows on both phones
     # (the build writes it into the app: AppVersion); raise it with Android's (VersionTest checks the two agree). CI
     # passes the build number (CURRENT_PROJECT_VERSION) for TestFlight.
-    MARKETING_VERSION: "1.21.1"
+    MARKETING_VERSION: "1.22.0"
     CURRENT_PROJECT_VERSION: "1"
     SWIFT_VERSION: "5.0"
     # The App Group the app and its widgets share (the widgets read the snapshot the app writes there). It has to be
     # registered in the owner's Apple Developer account for a signed build; an unsigned build (the Simulator's CI)
     # carries no entitlements, and then nothing is written and the widgets show their empty look.
     APP_GROUP: group.com.justdataplease.boringtravel
+    # Round 24: a community post's link (https://justdataplease.com/apps/boringtravel/post/#<id>, Android's
+    # CommunityLinks) opens the post in the app (a universal link). iOS checks the site's
+    # /.well-known/apple-app-site-association for this app's id first: until the owner puts it on the site, the link
+    # opens the website, whose page can send the app's own link (boringtravel://post/#<id>, the URL type below). The
+    # App ID needs the Associated Domains capability in the owner's Apple Developer account for a signed build; an
+    # unsigned build (the Simulator's CI) carries no entitlements.
+    ASSOCIATED_DOMAINS: applinks:justdataplease.com
 # The maps: MapLibre Native for iOS, the same map library as the Android app (OpenFreeMap's tiles, no key). Its Swift
 # package is MapLibre's own distribution repository; 7.0.0 (28 Oct 2026) needs iOS 15.5 or later.
 packages:
@@ -127,7 +134,8 @@ targets:
           - instagram
           - whatsapp
         # The widgets' buttons and the quick actions open the app at their action (boringtravel://write, camera, voice,
-        # today, new_trip).
+        # today, new_trip). Since round 24 also a community post (boringtravel://post/#<id>), the website's way into the
+        # app while the post links aren't universal links yet.
         CFBundleURLTypes:
           - CFBundleURLName: com.justdataplease.boringtravel
             CFBundleURLSchemes:
@@ -159,6 +167,9 @@ targets:
         # build without it never asks Apple. The Simulator's unsigned CI build carries no entitlements.
         com.apple.developer.applesignin:
           - Default
+        # Round 24: the community's post links as universal links (the build setting ASSOCIATED_DOMAINS above).
+        com.apple.developer.associated-domains:
+          - $(ASSOCIATED_DOMAINS)
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.justdataplease.boringtravel

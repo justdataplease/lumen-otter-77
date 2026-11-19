@@ -70,6 +70,8 @@ class MapScene(
     val maxZoom: Double,
     val interactive: Boolean,
     val showStopNames: Boolean,
+    /** A community post's small map (Android's compactRoute): thin dashed lines, a dot per place (round 24). */
+    val compact: Boolean = false,
 )
 
 /** What the view tells the map: its style is in (or couldn't load), the camera moved, a tap (in points). */
@@ -173,7 +175,20 @@ object DrawnMapKit : MapKit {
                 line(d.planned.map { it.lat to it.lng }, c.plan, 2.6f, 0.85f, 2.2f)
                 for (r in d.routes) for (piece in r.pieces) {
                     val pts = piece.points.map { it.lat to it.lng }
-                    if (piece.jump) line(pts, c.route, 2.5f, 0.8f, 2f) else line(pts, c.route, 4f, 1f, null)
+                    when {
+                        scene.compact -> line(pts, c.route, 2f, 0.72f, 3f)
+                        piece.jump -> line(pts, c.route, 2.5f, 0.8f, 2f)
+                        else -> line(pts, c.route, 4f, 1f, null)
+                    }
+                }
+                if (scene.compact) {
+                    // A dot per place instead of pins, as the style's compact layers draw them.
+                    for (m in d.plans + d.stops + d.entries) {
+                        val o = at(m.lat, m.lng)
+                        drawCircle(Color(c.route).copy(alpha = 0.9f), 3.2f * density, o)
+                        drawCircle(Color(c.surface), 3.2f * density, o, style = Stroke(1.2f * density))
+                    }
+                    return@Canvas
                 }
                 for (pin in pins.filter { it.kind != PinKind.Entry }) drawPinAt(pin.kind, c, density, pin.left * density, pin.top * density)
                 if (scene.showStopNames && style?.offline != true) {

@@ -353,18 +353,22 @@ fun BtBackButton(onClick: () -> Unit, modifier: Modifier = Modifier, contentDesc
     }
 }
 
-/** The floating action (`.fab`): primary, 48 dp, a soft shadow (Postcard Pop: ink outline and hard shadow). */
+/**
+ * The floating action (`.fab`): primary, 48 dp, a soft shadow (Postcard Pop: ink outline and hard shadow). [accent]
+ * fills it with the theme's highlighter instead, for a second action beside the primary one (the Plan's Chat).
+ */
 @Composable
-fun BtFab(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, icon: ImageVector? = BtIcons.Add) {
+fun BtFab(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, icon: ImageVector? = BtIcons.Add, accent: Boolean = false) {
     val c = Bt.colors
     val skin = Bt.tokens.skin
     val shape = btControlShape()
+    val content = if (accent) c.onAccent else c.onPrimary
     Row(
         modifier
             .height(48.dp)
             .btShadow(skin.fabShadow, shape)
             .clip(shape)
-            .background(c.primary)
+            .background(if (accent) c.accent else c.primary)
             .btBorder(skin.buttonBorder, shape)
             .clickable(role = Role.Button, onClick = onClick)
             .padding(horizontal = 18.dp),
@@ -372,10 +376,10 @@ fun BtFab(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, icon
         // Centred when it is given a width (Trips' pair of buttons); hugs its content otherwise.
         horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
     ) {
-        if (icon != null) Icon(icon, null, Modifier.size(18.dp), tint = c.onPrimary)
+        if (icon != null) Icon(icon, null, Modifier.size(18.dp), tint = content)
         Text(
             text, Modifier.weight(1f, fill = false), style = Bt.text.button.copy(fontSize = Bt.text.button.fontSize * (15f / 14f)),
-            color = c.onPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis,
+            color = content, maxLines = 1, overflow = TextOverflow.Ellipsis,
         )
     }
 }

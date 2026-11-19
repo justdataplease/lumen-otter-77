@@ -92,6 +92,19 @@ class FakeGoogleCloud(
     val appleRevoked = mutableListOf<String>()
     val firebaseDeleted = mutableListOf<String>()
 
+    /** Firebase Auth's tokens (round 24): each ID token and refresh token to its account's id; Firestore reads the first. */
+    val firebaseIdTokens = HashMap<String, String>()
+    private val firebaseRefresh = HashMap<String, String>()
+
+    /** Cloud Firestore (round 24): the community's documents, read and written by the signed-in account. */
+    val firestore = FakeFirestore()
+
+    /** Files shared by link in someone's Drive (a community post's pictures and clips), by id. */
+    val publicFiles = LinkedHashMap<String, ByteArray>()
+
+    /** A Firebase account's ID token, as Firebase gives one (tests use it to reach Firestore as that account). */
+    fun firebaseToken(uid: String): String = "fb-id-${++n}".also { firebaseIdTokens[it] = uid }
+
     /** Resumable uploads in progress, by session. */
     private class Session(val meta: JsonObject, val mime: String, val size: Long, var bytes: ByteArray = ByteArray(0))
     private val sessions = HashMap<String, Session>()
@@ -112,10 +125,25 @@ class FakeGoogleCloud(
         route?.invoke(c)?.let { return it }
         return when (c.host) {
             "oauth2.googleapis.com" -> oauth(c)
-            "www.googleapis.com" -> if (!authorized(c)) answer(c, 401, """{"error":{"code":401,"message":"Invalid Credentials"}}""") else drive(c)
+            // A link-shared file read with the app's API key (a community post's picture or clip), else Drive with a token.
+            "www.googleapis.com" -> when {
+                c.q("key") != null && c.q("alt") == "media" && c.path.startsWith("/drive/v3/files/") -> shared(c, c.path.removePrefix("/drive/v3/files/"))
+                !authorized(c) -> answer(c, 401, """{"error":{"code":401,"message":"Invalid Credentials"}}""")
+                else -> drive(c)
+            }
+            // Google's public download address (no key in the build).
+            "drive.usercontent.google.com" -> shared(c, c.q("id").orEmpty())
             "identitytoolkit.googleapis.com", "securetoken.googleapis.com" -> firebase(c)
+            "firestore.googleapis.com" -> firestore.answer(c, c.header("Authorization")?.removePrefix("Bearer ")?.let(firebaseIdTokens::get), c.header("Authorization") != null)
             else -> NetAnswer(404, c.url)
         }
+    }
+
+    /** A file shared by link: its bytes, or Drive's 404 when it isn't (or isn't shared any more). */
+    private fun shared(c: FakeCall, id: String): NetAnswer {
+        val bytes = publicFiles[id] ?: return answer(c, 404, """{"error":{"code":404,"message":"File not found: $id."}}""")
+        val type = if (bytes.size > 8 && bytes[4] == 'f'.code.toByte() && bytes[5] == 't'.code.toByte()) "video/mp4" else "image/jpeg"
+        return NetAnswer(200, c.url, mapOf("Content-Type" to type), bytes)
     }
 
     // ------------------------------------------------------------------ OAuth
@@ -168,7 +196,13 @@ class FakeGoogleCloud(
                     if (scopes == null || refreshRevoked || f["refresh_token"] in revoked) return answer(c, 400, """{"error":"invalid_grant","error_description":"Token has been expired or revoked."}""")
                     val token = "access-${++n}"
                     access[token] = scopes
-                    answer(c, 200, buildJsonObject { put("access_token", token); put("expires_in", 3599); put("scope", scopes.joinToString(" ")) }.toString())
+                    answer(c, 200, buildJsonObject {
+                        put("access_token", token)
+                        put("expires_in", 3599)
+                        put("scope", scopes.joinToString(" "))
+                        // A grant with openid gives a fresh ID token on each refresh, as Google's does.
+                        if ("openid" in scopes) put("id_token", jwt(buildJsonObject { put("email", account.email); account.name?.let { put("name", it) }; put("sub", "sub-1") }))
+                    }.toString())
                 }
                 else -> answer(c, 400, """{"error":"unsupported_grant_type"}""")
             }
@@ -351,16 +385,23 @@ class FakeGoogleCloud(
         return when (c.path) {
             "/v1/accounts:signInWithIdp" -> {
                 val post = (o?.get("postBody") as? JsonPrimitive)?.content.orEmpty()
-                if ("providerId=apple.com" !in post || "nonce=" !in post) return answer(c, 400, """{"error":{"message":"INVALID_IDP_RESPONSE"}}""")
+                val google = "providerId=google.com" in post
+                if (!google && ("providerId=apple.com" !in post || "nonce=" !in post)) return answer(c, 400, """{"error":{"message":"INVALID_IDP_RESPONSE"}}""")
                 val token = java.net.URLDecoder.decode(post.substringAfter("id_token=").substringBefore('&'), Charsets.UTF_8)
-                val email = GoogleOAuth.who(token).email
-                val id = "fb-user-1"
+                val who = GoogleOAuth.who(token)
+                if (google && who.subject == null) return answer(c, 400, """{"error":{"message":"INVALID_IDP_RESPONSE"}}""")
+                val email = who.email
+                // Apple's account is always the same one here; Google's is named after its subject.
+                val id = if (google) "fb-google-${who.subject}" else "fb-user-1"
                 firebaseUsers[id] = email
+                val idToken = firebaseToken(id)
+                val refreshToken = "fb-refresh-${++n}".also { firebaseRefresh[it] = id }
                 answer(c, 200, buildJsonObject {
                     put("localId", id)
-                    put("idToken", "fb-id-${++n}")
-                    put("refreshToken", "fb-refresh-${++n}")
+                    put("idToken", idToken)
+                    put("refreshToken", refreshToken)
                     email?.let { put("email", it) }
+                    if (google) who.name?.let { put("displayName", it) }
                 }.toString())
             }
             "/v2/accounts:revokeToken" -> {
@@ -368,11 +409,25 @@ class FakeGoogleCloud(
                 answer(c, 200, "{}")
             }
             "/v1/accounts:delete" -> {
-                firebaseDeleted += (o?.get("idToken") as? JsonPrimitive)?.contentOrNull.orEmpty()
-                firebaseUsers.clear()
+                val token = (o?.get("idToken") as? JsonPrimitive)?.contentOrNull.orEmpty()
+                firebaseDeleted += token
+                firebaseIdTokens[token]?.let { uid -> firebaseUsers.remove(uid) } ?: firebaseUsers.clear()
                 answer(c, 200, "{}")
             }
-            "/v1/token" -> answer(c, 200, """{"id_token":"fb-id-${++n}","refresh_token":"fb-refresh-${++n}"}""")
+            "/v1/token" -> {
+                val f = form(c)
+                val refreshToken = f["refresh_token"].orEmpty()
+                val uid = firebaseRefresh[refreshToken] ?: "fb-user-1"
+                if (uid !in firebaseUsers && firebaseRefresh.containsKey(refreshToken) && firebaseDeleted.isNotEmpty()) {
+                    return answer(c, 400, """{"error":{"code":400,"message":"USER_NOT_FOUND"}}""")
+                }
+                answer(c, 200, buildJsonObject {
+                    put("id_token", firebaseToken(uid))
+                    put("refresh_token", refreshToken.ifEmpty { "fb-refresh-${++n}" })
+                    put("user_id", uid)
+                    put("expires_in", "3600")
+                }.toString())
+            }
             else -> NetAnswer(404, c.url)
         }
     }

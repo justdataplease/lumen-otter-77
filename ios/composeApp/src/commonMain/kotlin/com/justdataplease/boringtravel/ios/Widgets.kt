@@ -66,14 +66,30 @@ object Deeplink {
     /** The app's own links: boringtravel://write and so on (the widget's buttons, the quick actions). */
     const val SCHEME = "boringtravel"
 
+    /**
+     * A community post's link opened with the app (round 24; Android's Deeplink.POST): "post:<id>". It comes as the
+     * post's web link (https://justdataplease.com/apps/boringtravel/post/#<id>, a universal link once the site has the
+     * owner's apple-app-site-association) or as the app's own link the site can fall back on (boringtravel://post/#<id>).
+     */
+    const val POST = "post:"
+
     private val known = setOf(WRITE, CAMERA, PHOTO, VOICE, NEW_TRIP, TODAY, TRACKING)
 
-    /** The action of a link into the app ("boringtravel://voice"), or null for any other link. */
+    /** boringtravel://post/#<id>, boringtravel://post#<id>, boringtravel://post?id=<id> or boringtravel://post/<id>. */
+    private val APP_POST = Regex("""^boringtravel://post(?:/?[#?](?:id=)?|/)([A-Za-z0-9_-]{1,64})$""", RegexOption.IGNORE_CASE)
+
+    /** The action of a link into the app ("boringtravel://voice", a post's link), or null for any other link. */
     fun of(link: String): String? {
-        val rest = link.trim().removePrefix("$SCHEME://").takeIf { it != link.trim() } ?: return null
+        val text = link.trim()
+        com.justdataplease.boringtravel.community.CommunityLinks.find(text)?.let { return POST + it }
+        APP_POST.matchEntire(text)?.let { return POST + it.groupValues[1] }
+        val rest = text.removePrefix("$SCHEME://").takeIf { it != text } ?: return null
         val action = rest.substringBefore('?').substringBefore('#').trimEnd('/').lowercase()
         return action.takeIf { it in known }
     }
+
+    /** The post id of a [POST] action, or null. */
+    fun postOf(action: String): String? = if (action.startsWith(POST)) action.removePrefix(POST).takeIf { it.isNotEmpty() } else null
 
     fun link(action: String): String = "$SCHEME://$action"
 }

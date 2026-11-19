@@ -2,9 +2,7 @@ package com.justdataplease.boringtravel.ui.trip
 
 import com.justdataplease.boringtravel.ui.components.BtTag
 import com.justdataplease.boringtravel.model.PlanSpan
-import com.justdataplease.boringtravel.graph
 import androidx.compose.ui.platform.LocalContext
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -65,12 +63,10 @@ import com.justdataplease.boringtravel.model.Vehicle
 import com.justdataplease.boringtravel.places.DayPlace
 import com.justdataplease.boringtravel.places.VisitMatcher
 import com.justdataplease.boringtravel.ui.calendar.CalendarPrompt
-import com.justdataplease.boringtravel.ui.components.BtButton
 import com.justdataplease.boringtravel.ui.components.BtCard
 import com.justdataplease.boringtravel.ui.components.BtFab
 import com.justdataplease.boringtravel.ui.components.BtGhostButton
 import com.justdataplease.boringtravel.ui.components.BtTextDialog
-import com.justdataplease.boringtravel.ui.components.ProTag
 import com.justdataplease.boringtravel.ui.components.TravelModeChooser
 import com.justdataplease.boringtravel.ui.components.btControlShape
 import com.justdataplease.boringtravel.ui.icons.BtIcons
@@ -97,7 +93,8 @@ private val NOT_SCROLLED = Any()
 
 /**
  * The trip's plan, as the List or the Calendar ([PlanView]; Me › Plan view and the switch on the tab's own top row,
- * which also has Expand/Collapse for the List). Both end with "Add a place or a note" and Plan with AI.
+ * which also has Expand/Collapse for the List). Both have Chat (the AI planner) and Add at the bottom, and end with
+ * Add from a link.
  *
  * The List ([planList]) has every day under its header, empty days folded, Ideas last. Collapsed: one line per item.
  * Expanded (design boards "Plan · day by day, travel per leg"): "Day 13 · El Chaltén", the day's items with their kind
@@ -278,8 +275,10 @@ internal fun PlanTab(graph: AppGraph, actions: AppActions, tripId: String, trip:
             Text(travelError.orEmpty(), Modifier.padding(horizontal = 20.dp, vertical = 6.dp), style = Bt.text.fine, color = Bt.colors.danger)
         }
         // Adding is a real button (owner, 2026-11-10: "should have a nice button, + is too small"): in an empty plan
-        // it sits in the list; once there are items it floats over the list's corner, always in reach.
+        // it sits in the list; once there are items it floats over the list's corner, always in reach. Chat (the AI
+        // planner) sits beside it, so adding by hand and with AI are one tap each (owner, 19 Nov 2026: option A).
         val add = { sheet = SheetTarget(null, if (view == PlanView.List) PlanDays.initial(days, today) else selectedDay) }
+        val chat = { actions.planner(tripId, chat = true) }
         Box(Modifier.weight(1f).fillMaxWidth()) {
             LazyColumn(
                 Modifier.fillMaxSize(),
@@ -292,12 +291,16 @@ internal fun PlanTab(graph: AppGraph, actions: AppActions, tripId: String, trip:
                     PlanView.List -> planList(ctx, dragRows ?: rows, expanded, reorder)
                     PlanView.Calendar -> planCalendar(ctx, days, selectedDay, firstDay, select)
                 }
-                if (all.isEmpty()) item(key = "add") { AddButton(add) }
-                item(key = "ai") { PlanWithAiCard { actions.planner(tripId, chat = true) } }
+                if (all.isEmpty()) item(key = "add") { AddButtons(onChat = chat, onAdd = add) }
                 // Owner, 17 Nov 2026: "add places to an existing trip using all methods": a Google Maps list, a blog, a Google Doc.
                 item(key = "link") { AddFromLinkCard { actions.copySite(tripId = tripId) } }
             }
-            if (all.isNotEmpty()) BtFab("Add", onClick = add, modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp))
+            if (all.isNotEmpty()) {
+                Row(Modifier.align(Alignment.BottomEnd).padding(16.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    BtFab("Chat", onClick = chat, icon = BtIcons.Sparkle, accent = true)
+                    BtFab("Add", onClick = add)
+                }
+            }
             // "Moved to Tue 14 · 11:00" with Undo, above the Add button.
             PlanNotice(notices, Modifier.align(Alignment.BottomCenter).padding(bottom = 64.dp))
         }
@@ -602,33 +605,19 @@ internal fun KindBadge(
     }
 }
 
-/** "Add a place or a note": the main button of a plan with nothing in it yet. */
+/** Chat and "Add a place or a note": the main buttons of a plan with nothing in it yet, the pair that floats later. */
 @Composable
-private fun AddButton(onClick: () -> Unit) {
-    BtButton("Add a place or a note", onClick = onClick, modifier = Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 12.dp), icon = BtIcons.Add)
-}
-
-/** The AI planner in plain sight: "Plan with AI", one line on what it does, and PRO. Opens straight on Chat. */
-@Composable
-private fun PlanWithAiCard(onClick: () -> Unit) {
-    BtCard(Modifier.padding(horizontal = 20.dp).padding(top = 12.dp), padding = PaddingValues(horizontal = 16.dp, vertical = 14.dp), onClick = onClick) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) {
-                Text("Plan with AI", style = Bt.text.item)
-                Text("Paste rough notes, add screenshots or links, or chat. AI turns them into days, places and times.", Modifier.padding(top = 2.dp), style = Bt.text.sub)
-            }
-            // No tag for anyone who has Pro (and while everything is unlocked for testing).
-            val pro by LocalContext.current.graph.billing.state.collectAsStateWithLifecycle()
-            if (!pro.isPro) ProTag(Modifier.padding(start = 12.dp))
-        }
+private fun AddButtons(onChat: () -> Unit, onAdd: () -> Unit) {
+    Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 12.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        BtFab("Chat", onClick = onChat, icon = BtIcons.Sparkle, accent = true)
+        BtFab("Add a place or a note", onClick = onAdd, modifier = Modifier.weight(1f))
     }
-    Box(Modifier.height(8.dp))
 }
 
 /** Copy from a link, into this trip: a shared Google Maps list's places, or a blog's or document's places and notes. */
 @Composable
 private fun AddFromLinkCard(onClick: () -> Unit) {
-    BtCard(Modifier.padding(horizontal = 20.dp), padding = PaddingValues(horizontal = 16.dp, vertical = 14.dp), onClick = onClick) {
+    BtCard(Modifier.padding(horizontal = 20.dp).padding(top = 12.dp), padding = PaddingValues(horizontal = 16.dp, vertical = 14.dp), onClick = onClick) {
         Column {
             Text("Add from a link", style = Bt.text.item)
             Text("A Google Maps list, a blog post or a Google Doc: its places go into this plan.", Modifier.padding(top = 2.dp), style = Bt.text.sub)
