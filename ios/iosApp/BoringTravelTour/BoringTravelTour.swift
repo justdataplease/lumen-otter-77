@@ -164,7 +164,13 @@ final class BoringTravelTour: XCTestCase {
         // page goes into the log, to read what it shows.
         if tap("Me", in: app) {
             if scrollTap("Backup & sync", prefix: true, in: app) {
-                if shows("Google Drive not connected", in: app) || shows("Google Drive connected", in: app, wait: 5) {
+                // Round 27's Mac run: the row was on screen after the tap but its page never opened. Not open yet: the row
+                // is tapped once more (it is still there and can be tapped) before the screen goes into the log.
+                var opened = shows("Google Drive not connected", in: app) || shows("Google Drive connected", in: app, wait: 5)
+                if !opened, tapStarting("Backup & sync", in: app, wait: 3) {
+                    opened = shows("Google Drive not connected", in: app) || shows("Google Drive connected", in: app, wait: 5)
+                }
+                if opened {
                     gone("Your space", in: app, wait: 5)
                     snap("11-backup")
                 } else {
@@ -362,6 +368,25 @@ final class BoringTravelTour: XCTestCase {
                 }
             }
         }
+
+        // Round 28: Android's toast, the app's own dark pill near the foot of the screen. The place just added is held
+        // and let go (its row's menu, as on Android), Copy name puts it on the clipboard (writing asks nothing) and
+        // "Copied" shows for Android's two seconds: the picture is taken at once. Then a page break in Write, from the
+        // trip's Journal: "+" between the blocks, Page break, "New printed page". Nothing here asks the phone for
+        // anything; a step that doesn't show only ends the tour.
+        let added = app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS[c] %@", "Kawai Kanjiro")).firstMatch
+        if added.waitForExistence(timeout: 5), added.isHittable {
+            added.press(forDuration: 1.2)
+            if tap("Copy name", in: app, wait: 5), shows("Copied", in: app, wait: 3) {
+                snapNow("30-toast-copied")
+            }
+        }
+        gone("Copied", in: app, wait: 4)
+        if tap("Journal", in: app), tap("Write", in: app), tap("Insert here", in: app, wait: 10),
+           tap("Page break", in: app), shows("New printed page", in: app, wait: 5) {
+            snap("31-write-page-break")
+            _ = tap("Back", in: app)
+        }
     }
 
     /// Whether something whose label contains `text` shows within a few seconds.
@@ -424,12 +449,27 @@ final class BoringTravelTour: XCTestCase {
                 if up { app.swipeUp() } else { app.swipeDown() }
                 Thread.sleep(forTimeInterval: 0.6)
                 if let row = hittable() {
+                    // Compose's list may still be flinging after the swipe, and a tap during a fling only stops it (Mac
+                    // run 44662840465: Backup & sync was tapped on screen and its page never opened). The row is tapped
+                    // once it has stopped moving.
+                    settle(row)
                     row.tap()
                     return true
                 }
             }
         }
         return false
+    }
+
+    /// Waits until [element] stays in one place: its frame read every 0.3 s until two reads match, about 3 s at most.
+    private func settle(_ element: XCUIElement) {
+        var last = element.frame
+        for _ in 0..<10 {
+            Thread.sleep(forTimeInterval: 0.3)
+            let now = element.frame
+            if now == last { return }
+            last = now
+        }
     }
 
     /// Waits a few seconds at most for whatever is labelled with `text` to go (a sheet closing).
@@ -447,6 +487,15 @@ final class BoringTravelTour: XCTestCase {
         snap(name)
         XCUIDevice.shared.orientation = .portrait
         Thread.sleep(forTimeInterval: 1)
+    }
+
+    /// A picture at once, for what shows only a moment (a toast's two seconds).
+    private func snapNow(_ name: String) {
+        Thread.sleep(forTimeInterval: 0.3)
+        let picture = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        picture.name = name
+        picture.lifetime = .keepAlways
+        add(picture)
     }
 
     private func snap(_ name: String) {

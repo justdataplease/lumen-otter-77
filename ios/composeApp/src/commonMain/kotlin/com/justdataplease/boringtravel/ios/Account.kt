@@ -229,6 +229,7 @@ fun AccountCard(settings: AppSettings, modifier: Modifier = Modifier, deleteAtSt
     val kit = LocalPlannerKit.current
     val community = com.justdataplease.boringtravel.community.LocalCommunity.current
     val uri = LocalUriHandler.current
+    val toast = LocalToast.current
     val scope = rememberCoroutineScope()
     val appScope = LocalAppScope.current ?: scope
     var busy by remember { mutableStateOf(false) }
@@ -383,7 +384,7 @@ fun AccountCard(settings: AppSettings, modifier: Modifier = Modifier, deleteAtSt
                     )
                     Text(
                         "How to delete everything",
-                        Modifier.heightIn(min = 40.dp).clickable(role = Role.Button) { runCatching { uri.openUri(AccountPages.DELETE_URL) } }.padding(vertical = 10.dp),
+                        Modifier.heightIn(min = 40.dp).clickable(role = Role.Button) { if (runCatching { uri.openUri(AccountPages.DELETE_URL) }.isFailure) toast(AccountPages.DELETE_URL, true) }.padding(vertical = 10.dp),
                         style = Bt.text.sub,
                         color = Bt.colors.accentInk,
                     )

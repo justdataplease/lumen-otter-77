@@ -304,12 +304,12 @@ fun videoClock(ms: Int): String {
 /**
  * Journal video [media] full screen with sound and simple controls (the Android app's PlayVideo: the community's clip
  * player, once, with controls). A video whose file isn't on this phone says so instead ("This video isn't on this phone
- * yet. Try again in a moment.", Android's toast; here the app's snackbar).
+ * yet. Try again in a moment.", Android's toast, the app's own since round 28).
  */
 @Composable
 fun PlayVideo(media: Media, onClose: () -> Unit) {
     val kit = LocalMediaKit.current
-    val say = LocalSay.current
+    val toast = LocalToast.current
     val ready by produceState<Boolean?>(null, media.localPath) {
         value = withContext(MediaWork) { (kit.files.size(media.localPath) ?: 0L) > 0L }
     }
@@ -317,7 +317,7 @@ fun PlayVideo(media: Media, onClose: () -> Unit) {
         null -> Unit
         true -> ClipViewer(media.localPath, onClose, loop = false, controls = true)
         false -> LaunchedEffect(media.localPath) {
-            say("This video isn't on this phone yet. Try again in a moment.")
+            toast("This video isn't on this phone yet. Try again in a moment.", false)
             onClose()
         }
     }

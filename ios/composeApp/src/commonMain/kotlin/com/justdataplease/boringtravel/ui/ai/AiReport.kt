@@ -5,7 +5,7 @@ import com.justdataplease.boringtravel.ai.GeminiPlanner
 import com.justdataplease.boringtravel.firebase.FirebaseSetup
 import com.justdataplease.boringtravel.ios.LocalAppVersion
 import com.justdataplease.boringtravel.ios.LocalPhone
-import com.justdataplease.boringtravel.ios.rememberCopy
+import com.justdataplease.boringtravel.ios.rememberPlainCopy
 
 /**
  * Reporting an AI planner answer (the Android app's ui/ai/AiReport.kt; the stores' AI-generated content rules: users
@@ -58,7 +58,7 @@ object AiReport {
 @Composable
 fun rememberAiReport(say: (String) -> Unit): (answer: String, model: String?) -> Unit {
     val phone = LocalPhone.current
-    val copy = rememberCopy()
+    val copy = rememberPlainCopy()
     val version = LocalAppVersion.current
     return { answer, model ->
         val body = AiReport.body(answer, model ?: AiReport.model(), version)

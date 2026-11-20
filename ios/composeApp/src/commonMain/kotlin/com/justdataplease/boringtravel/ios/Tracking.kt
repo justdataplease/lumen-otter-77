@@ -20,7 +20,6 @@ import com.justdataplease.boringtravel.tracking.Stillness
 import com.justdataplease.boringtravel.tracking.TrackingPermissions.Step
 import com.justdataplease.boringtravel.tracking.TrackingPlan
 import com.justdataplease.boringtravel.tracking.TrackingTarget
-import com.justdataplease.boringtravel.ui.trips.HomeStats
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -417,7 +416,7 @@ object IosTrackingPlan {
     }
 
     /** The traveller's own trip on [today] (Android's TripRepository.ownCurrentOn): never an example, in demo mode too. */
-    fun ownCurrent(trips: List<Trip>, today: LocalDate): Trip? = HomeStats.sections(trips.filter { !it.isDemo && it.deletedAt == null }, today).now
+    fun ownCurrent(trips: List<Trip>, today: LocalDate): Trip? = TripsHomeData.onDay(trips.filter { !it.isDemo }, today)
 }
 
 /**

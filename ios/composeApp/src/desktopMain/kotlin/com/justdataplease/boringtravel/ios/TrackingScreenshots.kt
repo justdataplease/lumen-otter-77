@@ -195,7 +195,7 @@ private const val MEDIUM = 364
  * Today small and medium, the Quick bar, the Quick bar small; and the Quick bar at a 6.1-inch phone's 329 points, where
  * Voice steps aside.
  */
-private fun widgets(out: File, name: String, s: WidgetSnapshot, mark: ByteArray) {
+internal fun widgets(out: File, name: String, s: WidgetSnapshot, mark: ByteArray) {
     val stamp = Image.makeFromEncoded(mark).toComposeImageBitmap()
     // The home screen's own status bar is white on its wallpaper, not the app's: none drawn here.
     File(out, "$name.png").writeBytes(renderPhone(T_WIDTH, T_HEIGHT, T_DENSITY, frames = 4, statusBar = false) {

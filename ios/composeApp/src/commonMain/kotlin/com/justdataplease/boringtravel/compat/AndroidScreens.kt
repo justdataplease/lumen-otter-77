@@ -18,23 +18,23 @@ import kotlin.coroutines.CoroutineContext
 
 /*
  * The names of Android's screens the community's screens reach for (ui/community, read in at build time since round
- * 24), with the same meaning here: Toast (a line in passing: the app's snackbar, as every iPhone screen says things),
+ * 24), with the same meaning here: Toast (a line in passing: since round 28 the app's own toast, a dark pill near the foot
+ * of the screen for Android's 2 s or 3.5 s, as every screen of the app shows Android's toasts),
  * the share intent (the phone's share sheet), LocalContext (the screen's context that does both), and Jetpack's
  * ViewModel with its viewModelScope and viewModel(key) { … }: one view-model per key and stack entry, kept while the
  * entry is on the app's stack (a tab's pages too, while another tab shows) and cleared when the entry goes, as Android
  * keeps a view-model per back-stack entry.
  */
 
-/** android.widget.Toast: [show] says the text through the screen's context ([Context.say]). */
-class Toast private constructor(private val context: Context, private val text: String) {
-    fun show() = context.say(text)
+/** android.widget.Toast: [show] shows the text through the screen's context ([Context.toast]), for its length. */
+class Toast private constructor(private val context: Context, private val text: String, private val long: Boolean) {
+    fun show() = context.toast(text, long)
 
     companion object {
         const val LENGTH_SHORT = 0
         const val LENGTH_LONG = 1
 
-        @Suppress("UNUSED_PARAMETER")
-        fun makeText(context: Context, text: CharSequence, duration: Int): Toast = Toast(context, text.toString())
+        fun makeText(context: Context, text: CharSequence, duration: Int): Toast = Toast(context, text.toString(), duration == LENGTH_LONG)
     }
 }
 
@@ -67,15 +67,15 @@ class Intent(val action: String?) {
 }
 
 /**
- * A screen's context: [say] is the app's snackbar (Android's toasts), [share] the phone's share sheet for a text with a
+ * A screen's context: [showToast] is the app's toast (Android's), [share] the phone's share sheet for a text with a
  * subject (false when it can't). The settings are the app's.
  */
 class ScreenContext(
     settings: SettingsFile,
-    private val sayText: (String) -> Unit,
+    private val showToast: (text: String, long: Boolean) -> Unit,
     private val share: (subject: String, text: String) -> Boolean,
 ) : Context(settings) {
-    override fun say(text: String) = sayText(text)
+    override fun toast(text: String, long: Boolean) = showToast(text, long)
 
     override fun startActivity(intent: Intent) {
         val send = intent.chosen ?: intent

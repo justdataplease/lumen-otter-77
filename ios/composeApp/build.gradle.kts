@@ -1842,6 +1842,22 @@ val androidShareTests: Map<String, List<Pair<String, String>>> = run {
     mapOf("ui/share/ShareTargetsTest.kt" to listOf(links("LinkPlaces"), links("LinkPreview"), links("SharedLink")))
 }
 
+/*
+ * Round 28: the drawn scenes' picking (English and Greek words, then the country, the spot, a hash: art/Scenes.kt, read
+ * in) with this app's sceneFor (ios/DrawnScenes.kt), and the brand mark's numbers, colours and SVG (art/PlaneMark.kt)
+ * against the launcher icon's script in the Android app's docs.
+ */
+val androidArtTests: Map<String, List<Pair<String, String>>> = run {
+    val brand = androidMain.resolve("../../../docs/brand").normalize().invariantSeparatorsPath
+    mapOf(
+        "art/ScenePickTest.kt" to listOf("import com.justdataplease.boringtravel.ui.components.sceneFor" to "import com.justdataplease.boringtravel.ios.sceneFor"),
+        "art/PlaneMarkTest.kt" to listOf(
+            "File(\"../docs/brand/" to "File(\"$brand/",
+            "File(\"src/main/res/drawable\")" to "File(\"${androidMain.invariantSeparatorsPath}/res/drawable\")",
+        ),
+    )
+}
+
 fun testRewrite(line: String): String = when {
     line.startsWith("package com.justdataplease.boringtravel.") ->
         "package com.justdataplease.boringtravel.ios\n\nimport com.justdataplease.boringtravel.places.*"
@@ -1971,8 +1987,8 @@ val androidReferenceSources = tasks.register<Sync>("androidReferenceSources") {
 
 val androidTestSources = tasks.register<Sync>("androidTestSources") {
     into(layout.buildDirectory.dir("androidTests"))
-    inputs.property("rules", 20)
-    (androidExportTests + androidAiTests + androidSiteTests + androidClipTests + androidBookTests + androidCommunityTests + androidTogetherTests + androidShareTests).forEach { (file, rules) ->
+    inputs.property("rules", 21)
+    (androidExportTests + androidAiTests + androidSiteTests + androidClipTests + androidBookTests + androidCommunityTests + androidTogetherTests + androidShareTests + androidArtTests).forEach { (file, rules) ->
         from(androidMain.parentFile.resolve("test/java/$pkg")) {
             include(file)
             filter { line: String -> rewrite(line, rules) }
@@ -1997,7 +2013,7 @@ val androidTestSources = tasks.register<Sync>("androidTestSources") {
     doLast {
         val missing = androidTests.filterNot { destinationDir.resolve("$pkg/ios/android/$it").isFile } +
             androidTestsAsTheyAre.filterNot { destinationDir.resolve("$pkg/$it").isFile } +
-            (androidExportTests + androidAiTests + androidSiteTests + androidClipTests + androidBookTests + androidCommunityTests + androidTogetherTests + androidShareTests).keys.filterNot { destinationDir.resolve("$pkg/$it").isFile }
+            (androidExportTests + androidAiTests + androidSiteTests + androidClipTests + androidBookTests + androidCommunityTests + androidTogetherTests + androidShareTests + androidArtTests).keys.filterNot { destinationDir.resolve("$pkg/$it").isFile }
         check(missing.isEmpty()) { "Not in the Android app's tests any more: $missing" }
     }
 }

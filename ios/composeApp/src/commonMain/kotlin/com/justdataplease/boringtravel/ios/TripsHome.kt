@@ -88,6 +88,20 @@ object TripsHomeData {
     /** The trips on show: the examples in demo mode, the traveller's own otherwise ([DemoTrips.visible]). */
     fun visibleTrips(book: TripBook, demoMode: Boolean): List<Trip> =
         book.snapshot.trips.filter { it.deletedAt == null && DemoTrips.visible(it.id, demoMode) }
+
+    /**
+     * The trip on [day] among [trips] as Android's TripRepository.currentOn and ownCurrentOn pick it (its TripDao.allOn:
+     * of the trips whose dates hold the day, the one that started last, then the one made last): what a Write, a photo
+     * or a voice note without a trip goes into (null: outside trips), what the widgets and route tracking follow. Trips'
+     * own "Now" card is HomeStats' (the one that started first), as on Android.
+     */
+    fun onDay(trips: List<Trip>, day: LocalDate): Trip? = trips
+        .filter { it.deletedAt == null && it.isCurrent(day) }
+        .sortedWith(compareByDescending<Trip> { it.startDate!!.toEpochDay() }.thenByDescending { it.createdAt })
+        .firstOrNull()
+
+    /** [onDay] among the trips on show ([visibleTrips]): Android's currentOn. */
+    fun currentOn(book: TripBook, demoMode: Boolean, day: LocalDate): Trip? = onDay(visibleTrips(book, demoMode), day)
 }
 
 /**

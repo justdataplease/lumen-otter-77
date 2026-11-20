@@ -421,6 +421,41 @@ class WriteModel(
         if (!noPlace && named != null && placeName.isBlank()) placeName = named
     }
 
+    /**
+     * Names where a camera shot was taken (the Android editor's placeShot): its own point, else where the phone is now
+     * ([here]: only when location access was given already; never asks), else the latest route [point] under 12 h old,
+     * as for new notes; then the point's name ([name], the phone's geocoder) when the note has none yet.
+     */
+    suspend fun placeShot(
+        here: suspend () -> Pair<Double, Double>?,
+        point: com.justdataplease.boringtravel.data.db.TrackPoint?,
+        now: Long,
+        name: suspend (Double, Double) -> String?,
+    ) {
+        if (noPlace) return
+        if (lat == null) {
+            val fix = runCatching { here() }.getOrNull()
+            if (fix == null) {
+                // Android's fillPlace: the latest route point when it is recent, whatever the note.
+                val p = point ?: return
+                if (placeName.isNotBlank() || now - p.time > RECENT_POINT_MS) return
+                lat = p.lat
+                lng = p.lng
+                val named = runCatching { name(p.lat, p.lng) }.getOrNull()
+                if (!noPlace && named != null && placeName.isBlank()) placeName = named
+                return
+            }
+            if (lat != null) return
+            lat = fix.first
+            lng = fix.second
+        }
+        val la = lat ?: return
+        val ln = lng ?: return
+        if (placeName.isNotBlank() || noPlace) return
+        val named = runCatching { name(la, ln) }.getOrNull()
+        if (named != null && placeName.isBlank() && !noPlace) placeName = named
+    }
+
     // ---- Blocks ----
 
     fun ensureTrailingText() {

@@ -33,6 +33,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -88,7 +89,8 @@ private const val NOTE_AUTOSAVE_MS = 800L
  *
  * It writes note [entryId], or a new note in trip [tripId] (null: outside trips) on [today]. What is written is saved
  * once typing pauses, after each photo goes in, and when the screen is left; a new note is made by the first save with
- * something in it, and dropped when it is left empty.
+ * something in it, and dropped when it is left empty. [fromCamera]: note [entryId] was just made from a camera shot
+ * ([PhotoEntries]): the caret goes under the photo and its place is found, once (Android's fromCamera).
  */
 @Composable
 fun WriteScreen(
@@ -101,7 +103,7 @@ fun WriteScreen(
     selectedAtStart: Int? = null,
     albumAtStart: Int? = null,
     menuAtStart: WriteMenu? = null,
-    shot: PickedMedia? = null,
+    fromCamera: Boolean = false,
     placeTypedAtStart: String? = null,
     dictate: Boolean = false,
     dictationLanguage: String? = null,
@@ -113,6 +115,7 @@ fun WriteScreen(
     photoDefaults: (tripId: String?) -> PhotoDefaults = { PhotoDefaults.Page },
 ) {
     val kit = LocalMediaKit.current
+    val toast = LocalToast.current
     val google = com.justdataplease.boringtravel.google.LocalGoogle.current
     val together = LocalTogether.current
     val model = remember(book, entryId) {
@@ -171,9 +174,23 @@ fun WriteScreen(
         return true
     }
 
+    // A pick, a shot or a recording that comes back while photos or a video still go in waits, in the order they came,
+    // and goes in once they are in (Android's pendingPhotos, pendingShot and pendingVideo). Android's also wait for a
+    // note the phone is still reading back after it closed the app; here the note is read when the screen is made, and
+    // a picker's or the camera's result never outlives the app (iOS ends them with it), so there is nothing to wait for.
+    val pending = remember(model) { mutableStateListOf<PendingMedia>() }
     fun add(picked: List<PickedMedia>, at: Int?, into: String?) {
-        model.addMedia(scope, picked, at, into)
+        if (picked.isEmpty()) return
+        if (model.importing) pending += PendingMedia(picked, at, into) else model.addMedia(scope, picked, at, into)
     }
+    LaunchedEffect(model, model.importing, pending.size) {
+        if (model.importing || model.finished) return@LaunchedEffect
+        val next = pending.firstOrNull() ?: return@LaunchedEffect
+        pending.removeAt(0)
+        model.addMedia(scope, next.picked, next.at, next.into)
+    }
+    // What still waited when the screen was left: its copies go, as with every pick never brought in.
+    DisposableEffect(model) { onDispose { pending.forEach { p -> p.picked.forEach { kit.files.delete(it.path) } } } }
 
     // A new note's place: the last route point when it is recent, named by the phone's geocoder; never asks.
     val tracking = LocalTracking.current
@@ -184,13 +201,18 @@ fun WriteScreen(
         }
     }
 
-    // A photo taken from Trips' Now card ([shot]): the new note starts with it, once.
-    var shotAdded by rememberSaveable(model) { mutableStateOf(false) }
-    LaunchedEffect(model, shot) {
-        if (shot != null && !shotAdded) {
-            shotAdded = true
-            add(listOf(shot), null, null)
-        }
+    // A note just made from a camera shot ([fromCamera], Android's KEY_CAMERA): once, the caret under the photo, ready for a
+    // line, and the place found: the photo's own point, else where the phone is (only when location is allowed already:
+    // nothing is asked), else the last route point, named by the phone's geocoder.
+    var cameraDone by rememberSaveable(model) { mutableStateOf(false) }
+    LaunchedEffect(model, fromCamera) {
+        if (!fromCamera || cameraDone) return@LaunchedEffect
+        cameraDone = true
+        model.focusKey = model.items.lastOrNull { it is EdItem.Text }?.key
+        model.placeShot(
+            here = { web.location.takeIf { it.allowed() }?.current()?.let { it.lat to it.lng } },
+            point = tracking?.latestPoint(), now = com.justdataplease.boringtravel.time.nowMs(),
+        ) { lat, lng -> web.location.address(lat, lng, 8_000)?.let(GeoNames::noteLabel) }
     }
 
     /** Photos and videos from one picker (the Android editor's), into a layout too ([into], its key). */
@@ -212,7 +234,7 @@ fun WriteScreen(
         if (busy()) return
         focus.clearFocus()
         if (!kit.picker.hasCamera) {
-            model.notice = "No camera app on this phone."
+            toast("No camera app on this phone.", false)
             return
         }
         kit.picker.takePhoto { shot -> if (shot != null) add(listOf(shot), at, null) }
@@ -222,7 +244,7 @@ fun WriteScreen(
         if (busy()) return
         focus.clearFocus()
         if (!kit.picker.hasCamera) {
-            model.notice = "No camera app on this phone."
+            toast("No camera app on this phone.", false)
             return
         }
         kit.picker.recordVideo { video -> if (video != null) add(listOf(video), at, null) }
@@ -586,3 +608,6 @@ private fun WriteTopBar(model: WriteModel, onBack: () -> Unit, onDone: () -> Uni
         BtIconButton(BtIcons.Check, "Done", onDone, filled = true)
     }
 }
+
+/** A pick, a shot or a recording waiting for the photos before it to go in ([WriteScreen]). */
+class PendingMedia(val picked: List<PickedMedia>, val at: Int?, val into: String?)

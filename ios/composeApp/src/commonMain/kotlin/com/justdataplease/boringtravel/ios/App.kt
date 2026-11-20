@@ -159,8 +159,17 @@ class AppPhone(
 /** The app's version (Android's versionName, "1.21.1"), for what it writes with its name (an .ics file). */
 val LocalAppVersion = staticCompositionLocalOf { "" }
 
-/** What a screen says in passing (the app's snackbar, where Android shows a toast); nothing outside the app frame. */
+/**
+ * What a screen says in passing with the app's snackbar, where Android shows one ("Demo mode off"); nothing outside the
+ * app frame. Android's toasts are [LocalToast] (round 28).
+ */
 val LocalSay = staticCompositionLocalOf<(String) -> Unit> { {} }
+
+/**
+ * How far above the screen's foot (over its home indicator) a toast shows: on the bar, as Android's toast sits over an
+ * app's bottom bar (its window is the system's, a fixed way above the navigation bar).
+ */
+val TOAST_ABOVE = 64.dp
 
 /** The app's own coroutines, which outlive a screen (a short Maps link followed after its sheet closed). */
 val LocalAppScope = staticCompositionLocalOf<CoroutineScope?> { null }
@@ -196,12 +205,15 @@ sealed interface Place {
     data class Note(val tripId: String?, val entryId: String) : Place
 
     /**
-     * Writing a note for a trip (outside trips when [tripId] is null), or changing one ([entryId]); [shot]: a photo just
-     * taken from Trips' Now card, which the new note starts with; [dictate]: dictation starts by itself (the Now card's mic);
-     * [planItemId]: a new note about that plan item (its sheet's Write: at its place, on its day; Android's writeAbout).
+     * Writing a note for a trip, or changing one ([entryId]); a new note without a trip goes into the trip on today, else
+     * outside trips (Android's WriteViewModel.load). [fromCamera]: the note was just made from a camera shot (Trips' Now
+     * card, a widget, a quick action: [PhotoEntries]), so the caret goes under the photo and its place is found once;
+     * [dictate]: dictation starts by itself (the Now card's mic); [pick]: the photo library opens once (the Media tab's
+     * Add media, Android's attachPhotos); [planItemId]: a new note about that plan item (its sheet's Write: at its place,
+     * on its day; Android's writeAbout).
      */
     data class Write(
-        val tripId: String?, val entryId: String? = null, val shot: PickedMedia? = null, val dictate: Boolean = false, val pick: Boolean = false,
+        val tripId: String?, val entryId: String? = null, val fromCamera: Boolean = false, val dictate: Boolean = false, val pick: Boolean = false,
         val planItemId: String? = null,
     ) : Place
 
@@ -424,6 +436,9 @@ private fun AppFrame(
             snackbar.showSnackbar(text)
         }
     }
+    // Android's toasts (round 28): a dark pill near the foot of the screen, each in turn ([ToastHost]).
+    val toasts = remember { Toasts() }
+    fun toast(text: String, long: Boolean = false) = toasts.show(text, long)
     val demo = remember(book, settings) { DemoMode(book, settings, media.files) }
     // Demo mode is decided once, and the demo is kept around today (on every start; Android also on each return).
     LaunchedEffect(demo) {
@@ -469,8 +484,14 @@ private fun AppFrame(
     val widgetWriter = remember(widget) { widget?.let { WidgetWriter(it) } }
     LaunchedEffect(widgetWriter, revision, settings.look, settings.demoMode) {
         val writer = widgetWriter ?: return@LaunchedEffect
-        if (revision > 0) kotlinx.coroutines.delay(1_500)
+        if (revision > 0) kotlinx.coroutines.delay(WidgetWriter.DEBOUNCE_MS)
         writer.write(book, settings.look, settings.demoMode, if (followsClock) com.justdataplease.boringtravel.time.today() else today)
+    }
+    // And every write to the store, wherever it came from (a route's stops, a shared trip merged in the background).
+    LaunchedEffect(widgetWriter, writes) {
+        val writer = widgetWriter ?: return@LaunchedEffect
+        val flow = writes ?: return@LaunchedEffect
+        writer.follow(flow, book, { settings.look to settings.demoMode }) { if (followsClock) com.justdataplease.boringtravel.time.today() else today }
     }
     // A backup file being saved or restored shows on every screen.
     val backupFiles = LocalBackupFiles.current
@@ -619,15 +640,36 @@ private fun AppFrame(
     }
 
     /**
-     * The camera now; the photo becomes a new note in [tripId] (outside trips when null), opened in Write. Closed
-     * without a photo: nothing, and the app stays where it was (a widget's Camera too).
+     * The camera now (the Android app's rememberQuickCamera); the photo becomes a new note in [tripId] (outside trips when
+     * null) at once ([PhotoEntries]), opened in Write. Closed without a photo: nothing, and the app stays where it was (a
+     * widget's Camera too); a photo that couldn't be added: Android's toast, and the app stays where it was.
      */
     fun takePhoto(tripId: String?) {
         if (!media.picker.hasCamera) {
-            say("No camera app on this phone.")
+            toast("No camera app on this phone.")
             return
         }
-        media.picker.takePhoto { shot -> if (shot != null) open(Place.Write(tripId, shot = shot)) }
+        val launchedAt = com.justdataplease.boringtravel.time.nowMs()
+        media.picker.takePhoto { shot ->
+            if (shot == null) return@takePhoto
+            val returnedAt = com.justdataplease.boringtravel.time.nowMs()
+            scope.launch {
+                val defaults = PhotoDefaults.of(settings.tripPhotoStyles.of(tripId))
+                val id = try {
+                    PhotoEntries.create(book, media.files, shot, tripId, defaults, launchedAt, returnedAt)
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    throw e
+                } catch (_: Exception) {
+                    null
+                }
+                if (id == null) {
+                    toast(PhotoEntries.FAILED)
+                    return@launch
+                }
+                changed()
+                open(Place.Write(tripId, id, fromCamera = true))
+            }
+        }
     }
 
     /** The open trip is gone (deleted): back to where it was opened from. */
@@ -718,10 +760,14 @@ private fun AppFrame(
             return@LaunchedEffect
         }
         val day = if (followsClock) com.justdataplease.boringtravel.time.today() else today
-        val trip = com.justdataplease.boringtravel.ui.trips.HomeStats.sections(TripsHomeData.visibleTrips(book, settings.demoMode), day).now
+        // Android's currentOn: of the trips on today, the one that started last.
+        val trip = TripsHomeData.currentOn(book, settings.demoMode, day)
         when (action) {
             Deeplink.WRITE -> open(Place.Write(trip?.id))
-            Deeplink.CAMERA, Deeplink.PHOTO -> takePhoto(trip?.id)
+            Deeplink.CAMERA -> takePhoto(trip?.id)
+            // Android's AppNav: an older widget's "photo" opens Write with the photo library (its Deeplink.kt says the
+            // camera, its AppNav does this; copied as Android does it).
+            Deeplink.PHOTO -> open(Place.Write(trip?.id, pick = true))
             Deeplink.VOICE -> open(Place.Write(trip?.id, dictate = true))
             Deeplink.NEW_TRIP -> open(Place.NewTrip)
             Deeplink.TODAY -> if (trip != null) openTrip(trip.id, TripTab.Journal)
@@ -852,7 +898,7 @@ private fun AppFrame(
             while (stack.size > 1 && stack.last.place.let { it is Place.Idea || it == Place.Ideas || it == Place.NewTrip || it is Place.NewTripFrom }) back()
         },
         writeInTrip = { writeInTrip(it) }, dictateInTrip = { writeInTrip(it, dictate = true) }, takePhoto = ::takePhoto, setDemo = ::setDemo, leaveDemo = ::leaveDemo,
-        say = ::say, toTrips = ::toTrips,
+        say = ::say, toast = { text, long -> toast(text, long) }, toTrips = ::toTrips,
         openTripOn = { id, tab -> openTrip(id, tab) },
         newTrip = { open(Place.NewTrip) },
         tripDeleted = ::tripDeleted,
@@ -888,10 +934,11 @@ private fun AppFrame(
     // snackbar, their share intent the phone's share sheet.
     val phone = LocalPhone.current
     val screenContext = remember(phone) {
-        com.justdataplease.boringtravel.compat.ScreenContext(MemorySettingsFile(), { say(it) }) { subject, text -> phone.share(subject, text) }
+        com.justdataplease.boringtravel.compat.ScreenContext(MemorySettingsFile(), { text, long -> toast(text, long) }) { subject, text -> phone.share(subject, text) }
     }
     CompositionLocalProvider(
-        LocalSiteImport provides siteImport, LocalSay provides ::say, com.justdataplease.boringtravel.compat.LocalContext provides screenContext,
+        LocalSiteImport provides siteImport, LocalSay provides ::say, LocalToast provides { text, long -> toast(text, long) },
+        com.justdataplease.boringtravel.compat.LocalContext provides screenContext,
         LocalTogetherGraph provides togetherGraph,
     ) { BoringTravelTheme(settings.look, settings.fontSet, settings.textFont) {
         val where = where()
@@ -993,6 +1040,8 @@ private fun AppFrame(
                     bottom = frame.calculateBottomPadding(),
                 )
             }
+            // Android's toasts, over everything (the bar, a sheet), near the foot of the screen: the whole screen's.
+            ToastHost(toasts, bottom = frame.calculateBottomPadding() + TOAST_ABOVE)
         }
     } }
 }
@@ -1011,8 +1060,10 @@ private class Actions(
     val takePhoto: (String) -> Unit,
     val setDemo: (Boolean) -> Unit,
     val leaveDemo: () -> Unit,
-    /** A line in passing (Android's toasts: "Added to the plan"). */
+    /** A line in passing that Android says with a snackbar ("Demo mode off"). */
     val say: (String) -> Unit,
+    /** A line Android says with a toast ("Added to the plan"): the words, and whether it is a long one. */
+    val toast: (String, Boolean) -> Unit = { _, _ -> },
     val toTrips: () -> Unit,
     val openTripOn: (String, TripTab?) -> Unit,
     val newTrip: () -> Unit,
@@ -1217,22 +1268,22 @@ private fun Screen(
                     // A trip of the traveller's own: demo mode ends (only the examples show in it).
                     if (book.trip(tripId)?.isDemo == false) a.leaveDemo()
                     a.changed()
-                    a.say(summary)
+                    a.toast(summary, false)
                     a.plannerDone(tripId)
                 },
                 revision = revision,
-                onReport = rememberAiReport(a.say),
+                onReport = rememberAiReport { a.toast(it, true) },
                 chatAtStart = chat,
                 shared = place.shared,
             )
         }
-        Place.AiSettings -> LocalPlannerKit.current?.let { kit -> AiScreen(kit.ownAi, onBack = a.back, onSay = a.say) }
+        Place.AiSettings -> LocalPlannerKit.current?.let { kit -> AiScreen(kit.ownAi, onBack = a.back, onSay = { a.toast(it, true) }) }
         Place.Tracking -> LocalTracking.current?.let { tracking -> TrackingScreen(tracking, settings, onBack = a.back) }
         is Place.PlacePage -> PlaceScreen(
             book, place.tripId, place.itemId, place.stopId, revision,
             onBack = a.back,
             onChanged = a.changed,
-            onSay = a.say,
+            onSay = { a.toast(it, false) },
             onOpenNote = { a.open(Place.Note(place.tripId, it)) },
             onWriteAbout = { itemId -> a.open(Place.Write(place.tripId, planItemId = itemId)) },
         )
@@ -1271,12 +1322,14 @@ private fun Screen(
             },
         )
         is Place.Write -> WriteScreen(
-            book, place.tripId, place.entryId, today,
+            // A new note without a trip: the trip on today, else outside trips (Android's WriteViewModel.load, currentOn).
+            book, place.tripId ?: remember(place) { if (place.entryId == null) TripsHomeData.currentOn(book, settings.demoMode, today)?.id else null },
+            place.entryId, today,
             onDone = {
                 a.changed()
                 a.back()
             },
-            shot = place.shot,
+            fromCamera = place.fromCamera,
             dictate = place.dictate,
             pickAtStart = place.pick,
             dictationLanguage = settings.dictationLanguage,

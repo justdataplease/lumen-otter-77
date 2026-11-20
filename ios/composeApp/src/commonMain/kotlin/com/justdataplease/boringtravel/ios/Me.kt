@@ -94,6 +94,7 @@ fun MeScreen(
     onCommunityProfile: () -> Unit = {},
 ) {
     val uri = LocalUriHandler.current
+    val toast = LocalToast.current
     // Me › AI's line follows a key saved or removed there.
     val ownAi = LocalPlannerKit.current?.ownAi?.state?.collectAsState()?.value
     val phoneLanguage = LocalSpeech.current.phoneLanguage()
@@ -163,7 +164,7 @@ fun MeScreen(
                 )
             }
             BtCard(Modifier.padding(20.dp), padding = PaddingValues(horizontal = 16.dp)) {
-                MeRow("Privacy policy", "What stays on this phone and what goes where") { runCatching { uri.openUri(AboutApp.PRIVACY_URL) } }
+                MeRow("Privacy policy", "What stays on this phone and what goes where") { openPrivacyPolicy(uri, toast) }
                 // About is only the version and opens nothing (the Android app's, since 2026-11-14).
                 Column(Modifier.fillMaxWidth().padding(vertical = 14.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                     Text("Version", style = Bt.text.item, maxLines = 1)
@@ -364,13 +365,22 @@ private fun DrawScope.swatch(look: Look) {
     }
 }
 
+/**
+ * Opens the privacy policy in the browser; a phone that can't says its address with Android's long toast (the Android
+ * app's openPrivacyPolicy).
+ */
+fun openPrivacyPolicy(uri: androidx.compose.ui.platform.UriHandler, toast: (String, Boolean) -> Unit) {
+    if (runCatching { uri.openUri(AboutApp.PRIVACY_URL) }.isFailure) toast(AboutApp.PRIVACY_URL, true)
+}
+
 /** A quiet "Privacy policy" link (Welcome; the Android app's PrivacyLink). */
 @Composable
 fun PrivacyLink(modifier: Modifier = Modifier) {
     val uri = LocalUriHandler.current
+    val toast = LocalToast.current
     Text(
         "Privacy policy",
-        modifier.heightIn(min = 48.dp).clickable(role = Role.Button) { runCatching { uri.openUri(AboutApp.PRIVACY_URL) } }.padding(vertical = 14.dp),
+        modifier.heightIn(min = 48.dp).clickable(role = Role.Button) { openPrivacyPolicy(uri, toast) }.padding(vertical = 14.dp),
         style = Bt.text.sub,
         color = Bt.colors.accentInk,
     )

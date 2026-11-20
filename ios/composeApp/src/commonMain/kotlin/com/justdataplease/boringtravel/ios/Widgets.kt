@@ -22,11 +22,12 @@ import com.justdataplease.boringtravel.ui.components.drawPlaneMark
 import com.justdataplease.boringtravel.ui.theme.BtLooks
 import com.justdataplease.boringtravel.ui.theme.Look
 import com.justdataplease.boringtravel.ui.theme.Paper
-import com.justdataplease.boringtravel.ui.trips.HomeStats
 import com.justdataplease.boringtravel.widget.QuickBarLayout
 import com.justdataplease.boringtravel.widget.TodayInfo
 import com.justdataplease.boringtravel.widget.WidgetLook
 import com.justdataplease.boringtravel.widget.WidgetText
+import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.drop
 import kotlinx.serialization.Serializable
 import org.jetbrains.skia.EncodedImageFormat
 import org.jetbrains.skia.Image
@@ -49,7 +50,7 @@ object Deeplink {
     /** The camera; the photo becomes a new note opened in Write. */
     const val CAMERA = "camera"
 
-    /** Older widget buttons said "photo": the camera too. */
+    /** Older widget buttons said "photo": Write with the photo library open (Android's AppNav, round 28). */
     const val PHOTO = "photo"
     const val VOICE = "voice"
     const val NEW_TRIP = "new_trip"
@@ -210,7 +211,8 @@ data class WidgetSnapshot(
             val trips = book.snapshot.trips.filter { it.deletedAt == null && DemoTrips.visible(it.id, demoMode) }
             val days = (0 until DAYS).map { i ->
                 val day = today.plusDays(i.toLong())
-                val trip = HomeStats.sections(trips, day).now
+                // Android's WidgetUpdates.load: the trip TripRepository.currentOn gives (the one that started last).
+                val trip = TripsHomeData.onDay(trips, day)
                 val start = startOfDayMs(day, zoneId)
                 val end = startOfDayMs(day.plusDays(1), zoneId)
                 val wrote = if (i > 0) 0 else book.snapshot.entries.count {
@@ -273,7 +275,9 @@ data class WidgetSnapshot(
 
 /**
  * Keeps the widgets current (the Android app's WidgetUpdates.keepUpdated): the snapshot after a change to the trips,
- * notes, plan, stops, the theme or demo mode, and on every start; the stamp only when the theme changed.
+ * notes, plan, stops, the theme or demo mode, and on every start; the stamp only when the theme changed. Each write that
+ * changes the snapshot has the widgets drawn again (iPhone: WidgetCenter's reloadAllTimelines, in WidgetBridge.swift);
+ * the widgets also read it again every hour (Android's updatePeriodMillis, an hourly timeline on iPhone).
  */
 class WidgetWriter(private val widget: HomeWidget) {
     private var lastSnapshot: String? = null
@@ -286,5 +290,24 @@ class WidgetWriter(private val widget: HomeWidget) {
         widget.saveWidget(json, mark)
         lastSnapshot = json
         if (mark != null) lastMarkLook = look
+    }
+
+    /**
+     * Writes after every change to the trips' store ([writes]: AppCore's count of writes, from any screen or task: a
+     * note, the plan, a route's stops made at night, a shared trip brought up to date), [DEBOUNCE_MS] after the last one,
+     * so typing doesn't write each letter (Android's WidgetUpdates.keepUpdated debounces the same way). [look] gives the
+     * theme and demo mode then, [today] the day.
+     */
+    @OptIn(kotlinx.coroutines.FlowPreview::class)
+    suspend fun follow(writes: kotlinx.coroutines.flow.Flow<Int>, book: TripBook, look: () -> Pair<Look, Boolean>, today: () -> LocalDate) {
+        writes.drop(1).debounce(DEBOUNCE_MS).collect {
+            val (theme, demo) = look()
+            write(book, theme, demo, today())
+        }
+    }
+
+    companion object {
+        /** A change waits this long for the next one before the widgets are written (Android's 1.5 s). */
+        const val DEBOUNCE_MS = 1_500L
     }
 }

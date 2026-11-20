@@ -376,6 +376,18 @@ class CommunityDriver(width: Int, height: Int, content: @Composable () -> Unit) 
         frames(2)
     }
 
+    /** A finger held on [at] for [heldFrames] frames, then lifted (a long press: a plan row's menu). */
+    fun holdAt(at: Offset, heldFrames: Int = 14) {
+        press(at)
+        frames(heldFrames)
+        release(at)
+        frames(2)
+    }
+
+    /** Where the first node a screen reader would tap for [label] is ("Open Hotel Grotta"), for [holdAt]. */
+    fun clickCentre(label: String): Offset =
+        (find { it.config.getOrNull(androidx.compose.ui.semantics.SemanticsActions.OnClick)?.label == label } ?: error("Nothing does $label")).center
+
     /** A tap on what is described as (or contains) [description]. */
     fun tapDescription(description: String) = tapAt((find { it.config.getOrNull(SemanticsProperties.ContentDescription)?.any { d -> description in d } == true } ?: error("Nothing described as $description")).center)
 

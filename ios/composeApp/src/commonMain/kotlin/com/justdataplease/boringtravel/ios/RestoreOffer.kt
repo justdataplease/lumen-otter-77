@@ -19,13 +19,13 @@ import kotlinx.coroutines.launch
  * phone search for a backup first … ask the user to restore the latest"). Once Drive is connected, on Trips or on Backup
  * & sync, the newest backup that holds something is offered, once. Until the traveller answers, the daily backup doesn't
  * run (BackupSafety.waitForRestoreAnswer), so a new phone never backs up over the question. What a restore did is said
- * in passing (the app's snackbar, where Android shows a toast). [onChanged] runs after a restore. [foundAtStart] and
+ * in passing with Android's long toast (the app's own since round 28). [onChanged] runs after a restore. [foundAtStart] and
  * [replacesAtStart] show the question at once (the pictures).
  */
 @Composable
 fun RestoreOffer(settings: AppSettings, onChanged: () -> Unit = {}, foundAtStart: BackupEntry? = null, replacesAtStart: Boolean = false) {
     val backups = LocalDriveBackups.current
-    val say = LocalSay.current
+    val toast = LocalToast.current
     val appScope = LocalAppScope.current
     var found by remember { mutableStateOf(foundAtStart) }
     // The phone already holds trips of its own: the question says a restore replaces them.
@@ -73,7 +73,7 @@ fun RestoreOffer(settings: AppSettings, onChanged: () -> Unit = {}, foundAtStart
                     e.readable("The backup couldn't be restored. Try again in Me › Backup & sync.")
                 }
                 onChanged()
-                say(text)
+                toast(text, true)
             }
         },
         onDismiss = {

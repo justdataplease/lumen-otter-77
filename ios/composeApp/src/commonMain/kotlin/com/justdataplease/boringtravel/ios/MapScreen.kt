@@ -201,7 +201,7 @@ private fun AllTripsMap(
     // The traveller's own trip on now gets its stops first (the examples record nothing), with what was just recorded.
     LaunchedEffect(Unit) {
         tracking?.flush()
-        val own = HomeStats.sections(trips.filter { !it.isDemo }, today).now
+        val own = IosTrackingPlan.ownCurrent(trips, today)
         if (own != null && processor?.process(own.id) == true) onChanged()
     }
     val view = remember(book, revision, trips, demoMode) { AllTripsMapModel.build(book, trips, demoMode) }

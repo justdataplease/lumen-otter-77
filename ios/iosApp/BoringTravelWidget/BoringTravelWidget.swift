@@ -133,7 +133,9 @@ struct DaysProvider: TimelineProvider {
     }
 
     func getSnapshot(in context: Context, completion: @escaping (DayEntry) -> Void) {
-        if context.isPreview, Stored.load() == nil {
+        // The widget gallery shows Android's preview ("Day 14 · El Chaltén", its widget_preview_day and _trip), whatever
+        // the app wrote; on the Home Screen, the app's own snapshot.
+        if context.isPreview {
             completion(placeholder(in: context))
         } else {
             completion(entries().first ?? placeholder(in: context))
@@ -141,9 +143,14 @@ struct DaysProvider: TimelineProvider {
     }
 
     func getTimeline(in context: Context, completion: @escaping (Timeline<DayEntry>) -> Void) {
-        // The app asks for a new timeline whenever what the widgets show changes; each coming midnight is in this one.
-        completion(Timeline(entries: entries(), policy: .atEnd))
+        // The app asks for a new timeline whenever what the widgets show changes (WidgetBridge: reloadAllTimelines); each
+        // coming midnight is in this one, and the widgets read the snapshot again every hour (Android's
+        // updatePeriodMillis of an hour).
+        completion(Timeline(entries: entries(), policy: .after(Date().addingTimeInterval(DaysProvider.hour))))
     }
+
+    /** How often the widgets read the app's snapshot again by themselves (Android's updatePeriodMillis, 3,600,000). */
+    static let hour: TimeInterval = 3600
 
     /// Now with today's day, then one entry at each coming midnight.
     private func entries() -> [DayEntry] {
@@ -344,16 +351,70 @@ struct RoundButton: View {
 }
 
 /// The plane on the theme's yellow, as the app drew it; a yellow square before it has.
-struct Stamp: View {
+struct Stamp: SwiftUI.View {
     let image: UIImage?
     let size: CGFloat
 
-    var body: some View {
+    var body: some SwiftUI.View {
         if let image = image {
             Image(uiImage: image).resizable().interpolation(.high).frame(width: size, height: size)
         } else {
-            RoundedRectangle(cornerRadius: size * 0.22).fill(Color(argb: "#FFFFC93C")).frame(width: size, height: size)
+            // The gallery's preview and a widget placed before the app drew its stamp: the mark in Postcard Pop's yellow,
+            // as Android's preview layouts show it (ic_brand_plane).
+            PlaneMarkView(size: size)
         }
+    }
+}
+
+/// The brand mark as the app draws it (art/PlaneMark.kt, its numbers here): the rounded yellow tile, the navy dotted
+/// trail, the plane's three faces edged in navy and the two pale rules, on the 108-unit canvas scaled to [size].
+struct PlaneMarkView: SwiftUI.View {
+    let size: CGFloat
+
+    private static let wing: [CGFloat] = [82, 28, 50, 56, 55, 72]
+    private static let sheet: [CGFloat] = [82, 28, 27, 48, 50, 56]
+    private static let keel: [CGFloat] = [50, 56, 46, 66, 55, 72]
+    private static let rules: [CGFloat] = [44, 46.5, 58, 41.5, 41, 50.5, 51, 46.9]
+    private static let dots: [CGFloat] = [22.00, 84.00, 26.76, 81.18, 31.21, 77.90, 35.58, 74.49, 40.07, 71.27]
+
+    /// A canvas coordinate in the visible square (PlaneMark.local), at this size.
+    private func at(_ v: CGFloat) -> CGFloat { (54 + (v - 54) * 0.84 - 18) * size / 72 }
+
+    private func face(_ p: [CGFloat]) -> Path {
+        var path = Path()
+        path.move(to: CGPoint(x: at(p[0]), y: at(p[1])))
+        path.addLine(to: CGPoint(x: at(p[2]), y: at(p[3])))
+        path.addLine(to: CGPoint(x: at(p[4]), y: at(p[5])))
+        path.closeSubpath()
+        return path
+    }
+
+    var body: some SwiftUI.View {
+        let k = size / 72
+        let navy = Color(argb: "#FF1E2A5A")
+        let edge = StrokeStyle(lineWidth: 2.4 * 0.84 * k, lineJoin: .round)
+        ZStack {
+            RoundedRectangle(cornerRadius: size * 0.24).fill(Color(argb: "#FFFFC93C"))
+            Path { path in
+                let r = 1.5 * 0.84 * k
+                for i in stride(from: 0, to: PlaneMarkView.dots.count, by: 2) {
+                    path.addEllipse(in: CGRect(x: at(PlaneMarkView.dots[i]) - r, y: at(PlaneMarkView.dots[i + 1]) - r, width: 2 * r, height: 2 * r))
+                }
+            }.fill(navy)
+            face(PlaneMarkView.wing).fill(Color(argb: "#FFDCE2EF"))
+            face(PlaneMarkView.wing).stroke(navy, style: edge)
+            face(PlaneMarkView.sheet).fill(Color(argb: "#FFFFFFFF"))
+            face(PlaneMarkView.sheet).stroke(navy, style: edge)
+            face(PlaneMarkView.keel).fill(navy)
+            face(PlaneMarkView.keel).stroke(navy, style: edge)
+            Path { path in
+                for i in stride(from: 0, to: PlaneMarkView.rules.count, by: 4) {
+                    path.move(to: CGPoint(x: at(PlaneMarkView.rules[i]), y: at(PlaneMarkView.rules[i + 1])))
+                    path.addLine(to: CGPoint(x: at(PlaneMarkView.rules[i + 2]), y: at(PlaneMarkView.rules[i + 3])))
+                }
+            }.stroke(Color(argb: "#FFB9C6E4"), style: StrokeStyle(lineWidth: 1.3 * 0.84 * k, lineCap: .round))
+        }
+        .frame(width: size, height: size)
     }
 }
 

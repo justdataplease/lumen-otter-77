@@ -388,10 +388,21 @@ interface NativeWidget {
     fun writeWidgetFiles(snapshot: String, mark: NSData?)
 }
 
-/** The app's [HomeWidget] over Swift's [NativeWidget]. */
+/**
+ * The app's [HomeWidget] over Swift's [NativeWidget]. The screens and the run's own follower (round 28: [IosApp], for
+ * changes made with no screen up) both write: the same snapshot and stamp again are left out, so the widgets are asked to
+ * draw only when something changed.
+ */
 internal class IosHomeWidget(private val native: NativeWidget) : HomeWidget {
+    private var lastSnapshot: String? = null
+    private var lastMark: ByteArray? = null
+
     override fun saveWidget(snapshot: String, mark: ByteArray?) {
-        native.writeWidgetFiles(snapshot, mark?.let(::widgetData))
+        val newMark = mark?.takeIf { m -> !(lastMark?.contentEquals(m) ?: false) }
+        if (snapshot == lastSnapshot && newMark == null) return
+        native.writeWidgetFiles(snapshot, newMark?.let(::widgetData))
+        lastSnapshot = snapshot
+        if (newMark != null) lastMark = newMark
     }
 }
 

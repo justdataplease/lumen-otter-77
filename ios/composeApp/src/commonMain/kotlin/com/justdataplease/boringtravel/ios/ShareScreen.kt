@@ -139,7 +139,7 @@ fun ShareScreen(
     val media = LocalMediaKit.current
     val printer = LocalPagePrinter.current
     val phone = LocalPhone.current
-    val copy = rememberCopy()
+    val copy = rememberPlainCopy()
     val files = media.files
     val exports = remember(book, media, printer) { TripExports(book, files, media.frames, printer) }
     val scope = rememberCoroutineScope()

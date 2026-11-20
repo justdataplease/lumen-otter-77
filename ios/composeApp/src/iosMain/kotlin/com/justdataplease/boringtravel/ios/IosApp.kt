@@ -2,6 +2,7 @@ package com.justdataplease.boringtravel.ios
 
 import com.justdataplease.boringtravel.engine.TripFile
 import kotlinx.coroutines.MainScope
+import kotlinx.coroutines.launch
 import platform.Foundation.NSBundle
 import platform.Foundation.NSFileManager
 import platform.Foundation.NSNotificationCenter
@@ -38,7 +39,12 @@ object IosApp {
      */
     val version: String = AppVersion.NAME
 
-    val tripFile: TripFile = UserDefaultsTripFile()
+    /**
+     * The trips (round 28): the engine's text in a file of its own under the app's files (Application Support/BoringTravel/
+     * store/trips.json, beside media/ and the trip videos' folders), moved there from UserDefaults, where the app kept it
+     * until round 28, on the first start ([FileTripFile]).
+     */
+    val tripFile: TripFile = UserDefaultsTripFile().let { old -> FileTripFile(IosMediaFiles(), legacy = old, forgetLegacy = old::clear) }
     val settingsFile: SettingsFile = UserDefaultsSettingsFile()
     val core: AppCore by lazy { AppCore(tripFile, settingsFile) }
 
@@ -152,6 +158,18 @@ object IosApp {
  */
 fun startBoringTravel(widget: NativeWidget?, recording: NativeRecordingActivity?, continued: NativeContinuedWork?) {
     widget?.let { IosApp.widget = IosHomeWidget(it) }
+    // The widgets follow every write to the store, also in a run with no screen (the nightly run's stops, a shared trip
+    // merged by the background turn), as Android's WidgetUpdates.keepUpdated runs in its app process (round 28).
+    IosApp.widget?.let { w ->
+        if (widgetFollower == null) {
+            val writer = WidgetWriter(w)
+            widgetFollower = MainScope().launch {
+                writer.follow(IosApp.core.writes, IosApp.core.book, { IosApp.core.settings.look to IosApp.core.settings.demoMode }) {
+                    com.justdataplease.boringtravel.time.today()
+                }
+            }
+        }
+    }
     nativeContinuedWork = continued
     IosApp.recordingActivity = recording
     startPhoneNotes()
@@ -176,6 +194,9 @@ fun startBoringTravel(widget: NativeWidget?, recording: NativeRecordingActivity?
 /** The end of the app's start, waited for once. */
 private var launchObserver: Any? = null
 
+/** The widgets' follower of the store's writes, started once per run. */
+private var widgetFollower: kotlinx.coroutines.Job? = null
+
 /**
  * A link into the app from outside: a widget's button or a Home Screen quick action ("boringtravel://write"). It waits
  * until the screens can take it; false when it isn't one of the app's links.
@@ -199,14 +220,19 @@ fun stopRouteForToday() {
 }
 
 /**
- * The traveller's trips (the engine's data.json text) in the app's UserDefaults: they stay on the phone and are part
- * of its backups. They move to a file of their own with the photos.
+ * Where the traveller's trips (the engine's data.json text) were kept until round 28: the app's UserDefaults. Read once,
+ * on the first start since, to move them into their own file ([FileTripFile]), then cleared.
  */
 internal class UserDefaultsTripFile(private val defaults: NSUserDefaults = NSUserDefaults.standardUserDefaults) : TripFile {
     override fun read(): String? = defaults.stringForKey(KEY)
 
     override fun write(text: String) {
         defaults.setObject(text, forKey = KEY)
+    }
+
+    /** The old copy goes once the file holds the same text. */
+    fun clear() {
+        defaults.removeObjectForKey(KEY)
     }
 
     private companion object {

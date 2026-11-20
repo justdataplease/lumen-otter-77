@@ -81,13 +81,26 @@ fun rememberPaste(): () -> String? {
 val LocalPhone = staticCompositionLocalOf { Phone() }
 
 /**
- * Copies a text as the Android app's copyText does (ui/components/CopyText.kt): onto the clipboard, with a haptic tick.
- * The iPhone shows its own "Copied" when another app reads it, so no notice is added.
+ * Copies a text as the Android app's copyText does (ui/components/CopyText.kt): onto the clipboard, with a haptic tick,
+ * and "Copied" as Android's toast (round 28). Android 13 and later show the system's own "Copied" chip instead, older
+ * Androids this toast; an iPhone shows nothing of its own when an app copies, so the toast says it.
  */
 @Composable
 fun rememberCopy(): (String) -> Unit {
-    return rememberCopyWith()
+    val copy = rememberCopyWith()
+    val toast = LocalToast.current
+    return { text ->
+        copy(text)
+        toast("Copied", false)
+    }
 }
+
+/**
+ * Copies a text onto the clipboard and nothing more, where the Android app writes to its ClipboardManager itself and says
+ * what it says on its own (Share's Text › Copy: "Copied." on the screen; a report that couldn't be mailed).
+ */
+@Composable
+fun rememberPlainCopy(): (String) -> Unit = rememberCopyWith()
 
 /**
  * A long press copies [text] ([rememberCopy]); a blank [text] leaves the element as it is. A tap still reaches the

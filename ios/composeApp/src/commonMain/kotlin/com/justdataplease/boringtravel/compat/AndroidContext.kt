@@ -23,7 +23,7 @@ import kotlinx.serialization.json.longOrNull
 /**
  * The app's context for its settings files ([settings]: this phone's). Since round 24 also what the community's
  * screens do through it ([Toast], [startActivity] with the share [Intent]): a screen's context ([ScreenContext],
- * compat/AndroidScreens.kt) says and shares; this plain one does neither.
+ * compat/AndroidScreens.kt) shows toasts and shares; this plain one does neither.
  */
 open class Context(internal val settings: SettingsFile) {
     val applicationContext: Context get() = this
@@ -31,8 +31,11 @@ open class Context(internal val settings: SettingsFile) {
     @Suppress("UNUSED_PARAMETER")
     fun getSharedPreferences(name: String, mode: Int): PrefsFile = PrefsFile(settings, PrefsFile.keyOf(name))
 
-    /** A line in passing ([Toast.show]): the app's snackbar on a screen's context, nothing here. */
-    open fun say(text: String) {}
+    /**
+     * A toast ([Toast.show]): on a screen's context the app's own toast (round 28: a dark pill near the foot of the
+     * screen, 2 s or, [long], 3.5 s), nothing here.
+     */
+    open fun toast(text: String, long: Boolean) {}
 
     /** Android's startActivity, as far as the community uses it: the share sheet for a text ([Intent.ACTION_SEND]). */
     open fun startActivity(intent: Intent) {}

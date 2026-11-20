@@ -149,7 +149,7 @@ class SecondParityTest {
         val said = mutableListOf<String>()
         var closedMissing = false
         setContent {
-            CompositionLocalProvider(LocalMediaKit provides kit, LocalSay provides { said += it }) {
+            CompositionLocalProvider(LocalMediaKit provides kit, LocalToast provides { text, _ -> said += text }) {
                 BoringTravelTheme(Look.Default) {
                     PlayVideo(Media("bad", localPath = "media/bad.mp4", mime = "video/mp4", createdAt = 1, updatedAt = 1)) {}
                     PlayVideo(Media("gone", localPath = "media/gone.mp4", mime = "video/mp4", createdAt = 1, updatedAt = 1)) { closedMissing = true }
