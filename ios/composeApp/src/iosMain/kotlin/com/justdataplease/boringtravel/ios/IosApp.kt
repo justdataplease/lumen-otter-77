@@ -3,6 +3,7 @@ package com.justdataplease.boringtravel.ios
 import com.justdataplease.boringtravel.engine.TripFile
 import kotlinx.coroutines.MainScope
 import platform.Foundation.NSBundle
+import platform.Foundation.NSFileManager
 import platform.Foundation.NSNotificationCenter
 import platform.Foundation.NSOperationQueue
 import platform.Foundation.NSProcessInfo
@@ -23,6 +24,12 @@ import platform.UIKit.UIApplicationState
 object IosApp {
     /** The Simulator tour starts the app with "-tour": nothing then asks a question of its own (none does anyway). */
     val tour: Boolean = NSProcessInfo.processInfo.arguments.contains("-tour")
+
+    /**
+     * The tour's last start adds "-tourShare" (round 27): a Google Maps place comes in as if shared from the Maps app, so
+     * Add to plan opens (the Simulator's unsigned build has no App Group for the share extension to write into).
+     */
+    private val tourShare: Boolean = NSProcessInfo.processInfo.arguments.contains("-tourShare")
 
     /**
      * The Android app's versionName ("1.21.1"), written by the build from Android's build file: Me › Version, a backup's
@@ -114,8 +121,26 @@ object IosApp {
     /** The Live Activity's Swift side (RecordingActivityBridge), handed over at the start. */
     internal var recordingActivity: NativeRecordingActivity? = null
 
+    /**
+     * What other apps shared into this one (round 27): the share extension (iosApp/BoringTravelShare) leaves each share in
+     * the App Group's container (the widgets' group, the Info.plist's BoringTravelAppGroup), under Shares/; the screens
+     * take it from there. Without the App Group (the Simulator's unsigned build) there is no folder and nothing comes in.
+     */
+    val shares: ShareInbox by lazy {
+        val group = (NSBundle.mainBundle.objectForInfoDictionaryKey("BoringTravelAppGroup") as? String)
+            ?.let { NSFileManager.defaultManager.containerURLForSecurityApplicationGroupIdentifier(it)?.path }
+        val planted = if (tourShare) listOf(ShareManifest(text = "Kawai Kanjiro's House\n$TOUR_SHARE_LINK")) else emptyList()
+        ShareInbox(group?.let { IosMediaFiles(folder = it) }, files, planted)
+    }
+
+    /**
+     * A Google Maps place with its pin in the link (nothing to follow on the network), as the tour shares it: one the
+     * tour's Kyoto trip doesn't have already, so the Plan after Add shows the new one.
+     */
+    private const val TOUR_SHARE_LINK = "https://www.google.com/maps/place/Kawai+Kanjiro+Memorial+House/@34.9944,135.7737,17z"
+
     /** What the screens get of the phone's side (App's [AppPhone]). */
-    val phone: AppPhone get() = AppPhone(tracking, processor, widget, links)
+    val phone: AppPhone get() = AppPhone(tracking, processor, widget, links, shares)
 }
 
 /**
@@ -156,6 +181,14 @@ private var launchObserver: Any? = null
  * until the screens can take it; false when it isn't one of the app's links.
  */
 fun openAppLink(url: String): Boolean = IosApp.links.open(url)
+
+/**
+ * The app's scene is active again (Swift's scenePhase; round 27): what the share extension left in the App Group's folder
+ * meanwhile is taken by the screens (they also look at the start and each time the app is back on screen).
+ */
+fun checkShares() {
+    IosApp.shares.ask()
+}
 
 /**
  * The recording card's Stop (the Live Activity's button, an App Intent that runs in the app; Android's notification's

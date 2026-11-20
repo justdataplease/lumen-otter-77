@@ -83,13 +83,44 @@ class AppStack(first: List<Place>, tabs: Map<HomeTab, List<Place>> = emptyMap())
  * when the app left the screen); a photo just taken, dictation and the photo library opening at the start don't run again.
  */
 object AppRestore {
-    /** What a restore brings back. */
-    class Saved(val stack: List<Place>, val tabs: Map<HomeTab, List<Place>>, val tripTab: TripTab?, val tripDay: LocalDate?)
+    /** What a restore brings back; [tripDayKey] is the plan's day asked for (an epoch day, or PLAN_IDEAS). */
+    class Saved(val stack: List<Place>, val tabs: Map<HomeTab, List<Place>>, val tripTab: TripTab?, val tripDayKey: String?) {
+        /** The plan's day asked for, when it is a day (not the Ideas). */
+        val tripDay: LocalDate? get() = tripDayKey?.toLongOrNull()?.let(::localDateOfEpochDay)
+    }
 
-    fun encode(stack: AppStack, tripTab: TripTab, tripDay: LocalDate?, noteIds: Map<Int, String>, join: String? = null): String = buildJsonObject {
+    fun encode(stack: AppStack, tripTab: TripTab, tripDay: LocalDate?, noteIds: Map<Int, String>, join: String? = null): String =
+        encodeKey(stack, tripTab, tripDay?.toEpochDay()?.toString(), noteIds, join)
+
+    /**
+     * Where the app is, with the plan's day as its key ([tripDay]: an epoch day, or PLAN_IDEAS), a join link waiting
+     * ([join]), and what another app shared that waits for its sheet ([place]) or for the planner ([imported]).
+     */
+    fun encodeKey(
+        stack: AppStack, tripTab: TripTab, tripDay: String?, noteIds: Map<Int, String>, join: String? = null,
+        place: ShareRoute? = null, imported: com.justdataplease.boringtravel.ai.SharedItinerary? = null,
+    ): String = buildJsonObject {
         put("v", 1)
         // A shared trip's join link waiting for its sheet (round 26; Android's KEY_JOIN in its saved state).
         join?.let { put("join", it) }
+        // A link shared from another app waiting for Add to plan, or a few words without one (round 27; Android's
+        // KEY_PLACE_URL, KEY_PLACE_NAME and KEY_NO_LINK).
+        when (place) {
+            is ShareRoute.Place -> put("place", buildJsonObject {
+                put("url", place.link.url)
+                place.link.name?.let { put("name", it) }
+            })
+            ShareRoute.NoLink -> put("noLink", true)
+            else -> Unit
+        }
+        // An itinerary or pictures waiting for the planner (Android's itineraryText, itineraryUri, itineraryPictures).
+        imported?.let { share ->
+            put("import", buildJsonObject {
+                share.text?.let { put("text", it) }
+                share.uri?.let { put("uri", it) }
+                if (share.pictures.isNotEmpty()) put("pictures", buildJsonArray { share.pictures.forEach { add(JsonPrimitive(it)) } })
+            })
+        }
         put("stack", buildJsonArray { stack.entries.forEach { e -> placeJson(e.place, noteIds[e.id])?.let { add(it) } } })
         put("tabs", buildJsonObject {
             stack.tabPages.forEach { (tab, pages) ->
@@ -97,7 +128,10 @@ object AppRestore {
             }
         })
         put("tripTab", tripTab.key)
-        tripDay?.let { put("tripDay", it.toEpochDay()) }
+        when {
+            tripDay == PLAN_IDEAS -> put("tripDay", PLAN_IDEAS)
+            else -> tripDay?.toLongOrNull()?.let { put("tripDay", it) }
+        }
     }.toString()
 
     /**
@@ -116,21 +150,44 @@ object AppRestore {
                 val tab = HomeTab.entries.firstOrNull { it.name == name } ?: return@mapNotNull null
                 tab to places(pages as? JsonArray).takeWhile { valid(it, book) }
             }.toMap()
+            val day = o["tripDay"] as? JsonPrimitive
             Saved(
                 usable, tabs,
                 TripTab.of(o["tripTab"]?.jsonPrimitive?.contentOrNull),
-                o["tripDay"]?.jsonPrimitive?.longOrNull?.let(::localDateOfEpochDay),
+                day?.longOrNull?.toString() ?: day?.contentOrNull?.takeIf { it == PLAN_IDEAS },
             )
         }.getOrNull()
     }
 
     /** The join link [text] kept waiting for its sheet, also before Welcome is done; null when there is none. */
-    fun joinOf(text: String?): com.justdataplease.boringtravel.together.ShareLink? {
+    fun joinOf(text: String?): com.justdataplease.boringtravel.together.ShareLink? =
+        read(text) { o -> com.justdataplease.boringtravel.together.ShareLink.find(o["join"]?.jsonPrimitive?.contentOrNull) }
+
+    /** A link shared from another app kept waiting for Add to plan (or "nothing to add"), also before Welcome is done. */
+    fun sharedPlaceOf(text: String?): ShareRoute? = read(text) { o ->
+        val place = o["place"] as? JsonObject
+        val url = (place?.get("url") as? JsonPrimitive)?.contentOrNull
+        when {
+            url != null -> ShareRoute.Place(SharedLink(url, (place["name"] as? JsonPrimitive)?.contentOrNull))
+            (o["noLink"] as? JsonPrimitive)?.contentOrNull == "true" -> ShareRoute.NoLink
+            else -> null
+        }
+    }
+
+    /** An itinerary or pictures shared from another app, kept waiting for the planner, also before Welcome is done. */
+    fun sharedImportOf(text: String?): com.justdataplease.boringtravel.ai.SharedItinerary? = read(text) { o ->
+        val share = o["import"] as? JsonObject ?: return@read null
+        fun s(name: String) = (share[name] as? JsonPrimitive)?.contentOrNull
+        val pictures = (share["pictures"] as? JsonArray).orEmpty().mapNotNull { (it as? JsonPrimitive)?.contentOrNull }
+        val words = s("text")
+        val uri = s("uri")
+        if (words == null && uri == null && pictures.isEmpty()) null
+        else com.justdataplease.boringtravel.ai.SharedItinerary(words, uri, pictures)
+    }
+
+    private fun <T> read(text: String?, of: (JsonObject) -> T?): T? {
         if (text.isNullOrBlank()) return null
-        return runCatching {
-            val o = kotlinx.serialization.json.Json.parseToJsonElement(text).jsonObject
-            com.justdataplease.boringtravel.together.ShareLink.find(o["join"]?.jsonPrimitive?.contentOrNull)
-        }.getOrNull()
+        return runCatching { of(kotlinx.serialization.json.Json.parseToJsonElement(text).jsonObject) }.getOrNull()
     }
 
     private fun valid(place: Place, book: TripBook): Boolean {

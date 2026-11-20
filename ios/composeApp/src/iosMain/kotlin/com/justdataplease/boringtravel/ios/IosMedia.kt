@@ -94,12 +94,16 @@ fun iosMediaKit(): MediaKit {
 
 /**
  * The app's files under Application Support/BoringTravel ("media/<id>.jpg" as on Android, "picked/…" on the way in);
- * with [directory] NSCachesDirectory, what can be fetched again (link previews and their pictures).
+ * with [directory] NSCachesDirectory, what can be fetched again (link previews and their pictures). With [folder], the
+ * files of that folder instead (round 27: the App Group's container, where the share extension leaves what was shared).
  */
-class IosMediaFiles(private val directory: platform.Foundation.NSSearchPathDirectory = NSApplicationSupportDirectory) : MediaFiles {
+class IosMediaFiles(
+    private val directory: platform.Foundation.NSSearchPathDirectory = NSApplicationSupportDirectory,
+    folder: String? = null,
+) : MediaFiles {
     private val manager = NSFileManager.defaultManager
 
-    private val root: String = run {
+    private val root: String = folder?.trimEnd('/') ?: run {
         val base = NSSearchPathForDirectoriesInDomains(directory, NSUserDomainMask, true).firstOrNull() as? String
         (base ?: NSTemporaryDirectory().trimEnd('/')) + "/BoringTravel"
     }

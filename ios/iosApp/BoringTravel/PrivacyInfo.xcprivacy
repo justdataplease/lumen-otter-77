@@ -91,6 +91,8 @@
 		     Firestore keep, per member, the Firebase user id, a random member id and the Drive file id of their copy (User
 		     ID and Other User Content above), linked to the person, for the shared trip only, never for tracking; leaving
 		     a trip and Delete account take them out. -->
+		<!-- Round 27, sharing into the app (Android's share targets), adds no new type: what another app shares stays on
+		     this phone, written by the share extension into the App Group's folder and taken from there by the app. -->
 	</array>
 	<key>NSPrivacyAccessedAPITypes</key>
 	<array>
@@ -108,7 +110,9 @@
 		     app's container), so files no edit uses any more are deleted after an hour (Android's ClipMedia.sweep).
 		     Since the second parity round also a note's video half made 720p by a stopped app (journal-videos/, in the
 		     app's container) goes after an hour (Android's JournalVideos.workDir): the same reason. Since round 24 also the
-		     community's clips in the app's caches: the newest few are kept (Android's Community.prune), the same reason. -->
+		     community's clips in the app's caches: the newest few are kept (Android's Community.prune), the same reason.
+		     Since round 27 the app lists the files the share extension left in the App Group's container (each one's
+		     type, to take only files), which C617.1 covers too. -->
 		<dict>
 			<key>NSPrivacyAccessedAPIType</key>
 			<string>NSPrivacyAccessedAPICategoryFileTimestamp</string>

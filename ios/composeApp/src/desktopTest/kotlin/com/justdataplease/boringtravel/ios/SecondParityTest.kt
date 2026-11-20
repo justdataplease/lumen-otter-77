@@ -592,8 +592,8 @@ class SecondParityTest {
     @Test
     fun theAppDeclaresItsLanguageItsLiveActivityAndItsContinuedWork() {
         val yml = File("../iosApp/project.yml").readText()
-        // iOS's own sheets in the phone's language, for the app and its widgets.
-        assertEquals(2, Regex("CFBundleAllowMixedLocalizations: true").findAll(yml).count())
+        // iOS's own sheets in the phone's language, for the app, its widgets and (since round 27) its share extension.
+        assertEquals(3, Regex("CFBundleAllowMixedLocalizations: true").findAll(yml).count())
         assertTrue("NSSupportsLiveActivities: true" in yml)
         assertTrue("com.justdataplease.boringtravel.continued.export" in yml)
         assertTrue("com.justdataplease.boringtravel.continued.copy" in yml)

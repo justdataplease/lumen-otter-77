@@ -5,8 +5,9 @@ import BoringTravelApp
 /// The iPhone app's entry point. Every screen is drawn by the Kotlin framework (composeApp); Swift holds only what
 /// Kotlin can't reach from Windows: this entry point, the maps (MapLibre, MapLibreMap.swift), the home-screen widgets'
 /// files (WidgetBridge.swift; the widgets themselves are the BoringTravelWidget extension), the recording route's Live
-/// Activity (RecordingActivityBridge.swift: ActivityKit is Swift only) and the Home Screen quick actions (below);
-/// purchases (StoreKit) later.
+/// Activity (RecordingActivityBridge.swift: ActivityKit is Swift only) and the Home Screen quick actions (below); since
+/// round 27 the share extension (BoringTravelShare, its own target), whose shares Kotlin takes from the App Group's
+/// folder when the scene is active; purchases (StoreKit) later.
 @main
 struct BoringTravelIosApp: App {
     @UIApplicationDelegateAdaptor(QuickActionsDelegate.self) private var quickActions
@@ -30,6 +31,7 @@ struct BoringTravelIosApp: App {
 /// as Android's saved state. (SwiftUI.View, not View: the Kotlin framework has a class named View, Android's, in compat.)
 private struct RootView: SwiftUI.View {
     @SceneStorage("boringtravel.screens") private var screens = ""
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some SwiftUI.View {
         // Edge to edge: the screens keep clear of the Dynamic Island and the home indicator themselves.
@@ -44,6 +46,12 @@ private struct RootView: SwiftUI.View {
             // not opened twice.
             .onContinueUserActivity(NSUserActivityTypeBrowsingWeb) { activity in
                 if let url = activity.webpageURL { _ = IosAppKt.openAppLink(url: url.absoluteString) }
+            }
+            // Round 27: what another app shared through the share extension (BoringTravelShare) waits in the App Group's
+            // folder; the scene active again (also after a share sheet shown over this app) is when Kotlin takes it.
+            // The single-value onChange: iOS 16 has no two-value form.
+            .onChange(of: scenePhase) { phase in
+                if phase == .active { IosAppKt.checkShares() }
             }
     }
 }

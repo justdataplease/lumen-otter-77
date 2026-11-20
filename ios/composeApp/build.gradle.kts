@@ -1017,6 +1017,49 @@ val togetherRewrites: Map<String, List<Pair<String, String>>> = run {
 }
 
 /*
+ * Sharing into the app (round 27): Add to plan, the sheet a link shared from another app opens (ShareToPlanSheet: the
+ * link's preview, the trip and day chips, Place / Food / Stay, Add, "Copy its notes and pictures", a Google Maps list's
+ * "Add its N places"), and its rules (ShareTargets: the trips offered, the trip, day and kind first chosen, the item it
+ * makes), compiled as they are. Written again here: what Android's MainActivity does with a share (ios/ShareIn.kt: the
+ * share extension's folder in the App Group, the routing, Add to plan's AppGraph) and the extension itself
+ * (iosApp/BoringTravelShare, Swift).
+ */
+val shareFiles = listOf("ui/share/ShareTargets.kt", "ui/share/ShareToPlanSheet.kt")
+
+/*
+ * Their lines rewritten on the way in: this app's link and plan rules and the link's preview card (ios/), the engine's
+ * days (trips ordered by their epoch day, compat's isAfter, a day from its epoch day), the sheet's today the app frame's
+ * (graph.today(): the real day in the app, the previews' own in the tests), the stamp Stamps.now() (Android's
+ * repositories' now()), and AppGraph this app's ShareGraph.
+ */
+val shareRewrites: Map<String, List<Pair<String, String>>> = run {
+    fun to(old: String, new: String) = "import $old" to "import $new"
+    fun ios(pkg: String, name: String) = to("com.justdataplease.boringtravel.$pkg.$name", "com.justdataplease.boringtravel.ios.$name")
+    mapOf(
+        "ui/share/ShareTargets.kt" to listOf(
+            ios("links", "LinkFill"), ios("links", "LinkPlaces"), ios("links", "LinkPreview"), ios("links", "MapsLinks"),
+            ios("links", "MapsPlace"), ios("links", "SharedLink"), ios("ui.trip", "PlanOrder"),
+            to("java.time.LocalDate", "com.justdataplease.boringtravel.time.LocalDate\nimport com.justdataplease.boringtravel.compat.isAfter"),
+            "compareBy<Trip>({ it.startDate }, { it.createdAt })" to "compareBy<Trip>({ it.startDate?.toEpochDay() }, { it.createdAt })",
+            "compareBy<Trip>({ it.startDate }, { -it.createdAt })" to "compareBy<Trip>({ it.startDate?.toEpochDay() }, { -it.createdAt })",
+            "compareBy<Trip>({ it.endDate ?: it.startDate }, { it.createdAt })" to
+                "compareBy<Trip>({ (it.endDate ?: it.startDate)?.toEpochDay() }, { it.createdAt })",
+        ),
+        "ui/share/ShareToPlanSheet.kt" to listOf(
+            to("com.justdataplease.boringtravel.AppGraph", "com.justdataplease.boringtravel.ios.ShareGraph as AppGraph"),
+            to("com.justdataplease.boringtravel.data.repo.now", "com.justdataplease.boringtravel.data.repo.Stamps"),
+            ios("links", "LinkPlaces"), ios("links", "MapsLinks"), ios("links", "MapsList"), ios("links", "SharedLink"),
+            ios("ui.trip", "LinkPreviewCard"), ios("ui.trip", "PlanDays"), ios("ui.trip", "kindIcon"), ios("ui.trip", "rememberLinkPreview"),
+            to("java.time.LocalDate", "com.justdataplease.boringtravel.time.LocalDate\nimport com.justdataplease.boringtravel.time.localDateOfEpochDay"),
+            "val today = remember { LocalDate.now() }" to "val today = remember { graph.today() }",
+            "LocalDate.ofEpochDay(k.toLong())" to "localDateOfEpochDay(k.toLong())",
+            "ShareTargets.item(newId(), t, day, kind, link, shown, items, now())" to
+                "ShareTargets.item(newId(), t, day, kind, link, shown, items, Stamps.now())",
+        ),
+    )
+}
+
+/*
  * Whole functions cut out of a file on the way in, where they reach Android (a WebView, an Activity, Android's
  * view-model and launchers, Drive): from the first text to the end of the function ("\n}\n", a top-level declaration's
  * closing brace). This app writes them again (named in each note); the rest of the file is compiled as it is. The build
@@ -1155,7 +1198,7 @@ val sharedFiles = listOf(
     "google/DriveJson.kt",
     "google/DriveExportTooLargeException.kt",
     "backup/BackupVideos.kt",
-) + aiFiles + siteFiles + clipFiles + bookFiles + communityFiles + togetherFiles
+) + aiFiles + siteFiles + clipFiles + bookFiles + communityFiles + togetherFiles + shareFiles
 
 /*
  * A few lines are rewritten on the way in, where a shared file calls Java for something Kotlin has too (iPhone has no
@@ -1412,7 +1455,7 @@ val rewrites: Map<String, List<Pair<String, String>>> = mapOf(
         "import java.time.LocalDate" to "import com.justdataplease.boringtravel.time.LocalDate\nimport com.justdataplease.boringtravel.compat.isAfter",
         ".minByOrNull { it.startDate!! }" to ".minByOrNull { it.startDate!!.toEpochDay() }",
     ),
-) + aiRewrites + siteRewrites + clipRewrites + bookRewrites + communityRewrites + togetherRewrites
+) + aiRewrites + siteRewrites + clipRewrites + bookRewrites + communityRewrites + togetherRewrites + shareRewrites
 
 /** A rule that names a whole import line replaces only that line; any other rule replaces its text where it stands. */
 fun rewrite(line: String, rules: List<Pair<String, String>>): String = rules.fold(line) { text, (old, new) ->
@@ -1422,7 +1465,7 @@ fun rewrite(line: String, rules: List<Pair<String, String>>): String = rules.fol
 val sharedSources = tasks.register<Sync>("sharedSources") {
     into(layout.buildDirectory.dir("sharedSources"))
     // Gradle can't see a change to the rewriting rules; raise this when one changes, so the copy runs again.
-    inputs.property("rules", 35)
+    inputs.property("rules", 36)
     from(androidMain.resolve("java")) {
         sharedFiles.filterNot { it in rewrites }.forEach { include("$pkg/$it") }
     }
@@ -1789,6 +1832,16 @@ val androidTogetherTests: Map<String, List<Pair<String, String>>> = run {
     )
 }
 
+/*
+ * The Android app's own test of Add to plan's rules (round 27: the trips offered, the trip, day and kind chosen first, the
+ * item a Maps place, a short link and a site become), in its package against ShareTargets read in above, with this app's
+ * link rules for Android's. Its days are java.time's (the engine's days are java.time's on the desktop).
+ */
+val androidShareTests: Map<String, List<Pair<String, String>>> = run {
+    fun links(name: String) = "import com.justdataplease.boringtravel.links.$name" to "import com.justdataplease.boringtravel.ios.$name"
+    mapOf("ui/share/ShareTargetsTest.kt" to listOf(links("LinkPlaces"), links("LinkPreview"), links("SharedLink")))
+}
+
 fun testRewrite(line: String): String = when {
     line.startsWith("package com.justdataplease.boringtravel.") ->
         "package com.justdataplease.boringtravel.ios\n\nimport com.justdataplease.boringtravel.places.*"
@@ -1918,8 +1971,8 @@ val androidReferenceSources = tasks.register<Sync>("androidReferenceSources") {
 
 val androidTestSources = tasks.register<Sync>("androidTestSources") {
     into(layout.buildDirectory.dir("androidTests"))
-    inputs.property("rules", 19)
-    (androidExportTests + androidAiTests + androidSiteTests + androidClipTests + androidBookTests + androidCommunityTests + androidTogetherTests).forEach { (file, rules) ->
+    inputs.property("rules", 20)
+    (androidExportTests + androidAiTests + androidSiteTests + androidClipTests + androidBookTests + androidCommunityTests + androidTogetherTests + androidShareTests).forEach { (file, rules) ->
         from(androidMain.parentFile.resolve("test/java/$pkg")) {
             include(file)
             filter { line: String -> rewrite(line, rules) }
@@ -1944,7 +1997,7 @@ val androidTestSources = tasks.register<Sync>("androidTestSources") {
     doLast {
         val missing = androidTests.filterNot { destinationDir.resolve("$pkg/ios/android/$it").isFile } +
             androidTestsAsTheyAre.filterNot { destinationDir.resolve("$pkg/$it").isFile } +
-            (androidExportTests + androidAiTests + androidSiteTests + androidClipTests + androidBookTests + androidCommunityTests + androidTogetherTests).keys.filterNot { destinationDir.resolve("$pkg/$it").isFile }
+            (androidExportTests + androidAiTests + androidSiteTests + androidClipTests + androidBookTests + androidCommunityTests + androidTogetherTests + androidShareTests).keys.filterNot { destinationDir.resolve("$pkg/$it").isFile }
         check(missing.isEmpty()) { "Not in the Android app's tests any more: $missing" }
     }
 }

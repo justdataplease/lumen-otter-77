@@ -21,3 +21,4 @@ DerivedData/
 
 # Written by XcodeGen from iosApp/project.yml.
 /iosApp/BoringTravel/Info.plist
+/iosApp/BoringTravelShare/Info.plist

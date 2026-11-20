@@ -115,6 +115,13 @@ interface PlannerSide {
 
     /** A picked picture's copy under the app's files is done with (removed, read, or the chat left). */
     fun dropPicture(path: String) {}
+
+    /**
+     * A text file shared into the app (round 27; [path] under the app's files, where the share extension's copy was moved:
+     * Android's content URI), read by Android's rules ([ItineraryImport.decode]: UTF-8 or UTF-16 with its mark, 30,000
+     * characters, plain text only); throws [ItineraryImportException] with Android's words. The copy is removed after.
+     */
+    suspend fun readDocument(path: String): String = throw ItineraryImportException(PlannerChat.DOCUMENT_NOT_OPENED)
 }
 
 /**
@@ -140,6 +147,16 @@ class KitPlannerSide(private val kit: PlannerKit, private val book: TripBook, pr
     override fun save(proposal: Proposal, into: String?): ApplyResult = kit.save(into, proposal.draft, proposal.baseline, proposal.unticked).result
     override fun dropPicture(path: String) {
         if (path.startsWith("picked/")) files.delete(path)
+    }
+
+    override suspend fun readDocument(path: String): String = kotlinx.coroutines.withContext(MediaWork) {
+        try {
+            val bytes = files.read(path) ?: throw ItineraryImportException(PlannerChat.DOCUMENT_NOT_OPENED)
+            currentCoroutineContext().ensureActive()
+            ItineraryImport.decode(bytes)
+        } finally {
+            dropPicture(path)
+        }
     }
 }
 
@@ -221,6 +238,16 @@ class PlannerChat(private val side: PlannerSide, startTripId: String?, private v
     var error by mutableStateOf<String?>(null)
         private set
 
+    /** A text file shared to the app is being read into the box ([receiveShared]; round 27). */
+    var importing by mutableStateOf(false)
+        private set
+    var importError by mutableStateOf<String?>(null)
+        private set
+    private var importJob: Job? = null
+
+    /** What was shared for this chat was taken (Android hands a share to a new planner, then clears it). */
+    private var sharedTaken = false
+
     init {
         startTripId?.let(::load)
     }
@@ -241,7 +268,7 @@ class PlannerChat(private val side: PlannerSide, startTripId: String?, private v
      * saved trip, and changes to one trip's saved items never follow to another.
      */
     fun useTrip(id: String?) {
-        if (!startedNew || busy || applying || id == tripId) return
+        if (!startedNew || busy || applying || importing || id == tripId) return
         val target = id?.let { side.trip(it) }
         if (id != null && target == null) return
         val rows = target?.let { side.items(it.id) }.orEmpty()
@@ -320,6 +347,7 @@ class PlannerChat(private val side: PlannerSide, startTripId: String?, private v
     /** The chat is left: what runs stops and the pictures' copies go (Android's ViewModel cleared). */
     fun close() {
         requestJob?.cancel()
+        importJob?.cancel()
         (attachments.pictures + lastRead?.first.orEmpty()).distinct().forEach(side::dropPicture)
     }
 
@@ -336,6 +364,60 @@ class PlannerChat(private val side: PlannerSide, startTripId: String?, private v
 
     fun removeLink(link: String) {
         attachments = attachments.withoutLink(link)
+    }
+
+    /**
+     * Something shared to the app for the planner (Android's receiveShared): pictures and a Google Doc's link are attached
+     * to the message, a text file or text goes into the box. Nothing is sent until the traveller sends it. Taken once per
+     * chat: Android hands each share to a new planner and then clears it.
+     */
+    fun receiveShared(text: String?, uri: String?, pictures: List<String> = emptyList()) {
+        if (sharedTaken) return
+        sharedTaken = true
+        when {
+            pictures.isNotEmpty() -> addPictures(pictures)
+            text != null && ItineraryImport.googleDocId(text) != null && addLink(text) -> Unit
+            uri != null -> importDocument(uri)
+            text != null -> try {
+                receiveText(ItineraryImport.validate(text))
+            } catch (e: ItineraryImportException) {
+                importError = e.message
+            }
+        }
+    }
+
+    /** A text file shared to the app ([path] under the app's files): its text goes into the box, after anything typed there. */
+    private fun importDocument(path: String) {
+        if (importing || busy || applying) return
+        freezeDictation()
+        importError = null
+        importing = true
+        importJob = scope.launch {
+            try {
+                val text = withTimeout(DOCUMENT_TIMEOUT_MS) { side.readDocument(path) }
+                currentCoroutineContext().ensureActive()
+                importing = false
+                receiveText(text)
+            } catch (_: TimeoutCancellationException) {
+                importError = "This document took too long to open. Try again, or paste its text."
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: ItineraryImportException) {
+                importError = e.message ?: ItineraryImport.TOO_LARGE
+            } catch (_: Exception) {
+                importError = "Couldn't read this document. Paste its text instead."
+            } finally {
+                importing = false
+            }
+        }
+    }
+
+    private fun receiveText(text: String) = updateInput(if (input.isBlank()) text else input.trimEnd() + "\n\n" + text)
+
+    /** Cancel under "Reading the document": the reading stops, and nothing is said. */
+    fun cancelImport() {
+        importJob?.cancel()
+        importError = null
     }
 
     private fun pictureError(e: Throwable, own: OwnKeyPlanner?, count: Int): String = when {
@@ -371,7 +453,7 @@ class PlannerChat(private val side: PlannerSide, startTripId: String?, private v
 
     private fun sendText(text: String, onSent: () -> Unit) {
         val attached = attachments
-        if ((text.isEmpty() && attached.isEmpty) || busy || applying || !loaded) return
+        if ((text.isEmpty() && attached.isEmpty) || busy || importing || applying || !loaded) return
         val starts = !counted
         val pictures = attached.pictures
         val known = lastRead?.takeIf { it.first == pictures }?.second
@@ -483,7 +565,7 @@ class PlannerChat(private val side: PlannerSide, startTripId: String?, private v
     /** Saves the ticked changes, laid out again against the plan as it is now, then hands back the trip and a summary. */
     fun apply(onDone: (tripId: String, summary: String) -> Unit) {
         val proposal = proposal ?: return
-        if (applying || busy) return
+        if (applying || busy || importing) return
         if (proposal.layout.questions.isNotEmpty()) {
             error = "Answer the questions before saving."
             return
@@ -539,5 +621,11 @@ class PlannerChat(private val side: PlannerSide, startTripId: String?, private v
 
         /** The whole request, every model turn and map search included; Stop ends it sooner. */
         const val REQUEST_TIMEOUT_MS = 480_000L
+
+        /** A shared text file: read within this, or "This document took too long to open…" (Android's 45 s). */
+        const val DOCUMENT_TIMEOUT_MS = 45_000L
+
+        /** A shared file that isn't there to read (Android's ItineraryDocuments: no stream for it). */
+        const val DOCUMENT_NOT_OPENED = "This document couldn't be opened. Export it as .txt and try again."
     }
 }

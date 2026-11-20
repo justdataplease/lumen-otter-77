@@ -106,7 +106,8 @@ private val NOT_SCROLLED = Any()
  * saved clips and its photos by day, since round 20; [onAddMedia] opens a new note with the photo library).
  *
  * Everything read and every change goes through the engine's [TripBook]; [revision] changes whenever the trips do.
- * [planDay]: the plan's day to open on (a day picked on the Calendar tab); else today while the trip is on.
+ * [planDay]: the plan's day to open on (a day picked on the Calendar tab, or Add to plan's day: an epoch day, or
+ * PLAN_IDEAS for its Ideas, Android's TripState.DAY); else today while the trip is on.
  * [settings]: Plan view and the List expanded or not. [sheetAtStart], [menuAtStart] and [travelAtStart] (an item's id)
  * open the item sheet, the menu or a leg's travel straight away (the previews).
  */
@@ -123,7 +124,7 @@ fun TripPage(
     onWrite: () -> Unit,
     onDeleted: () -> Unit,
     tab: TripTab = TripTab.Plan,
-    planDay: LocalDate? = null,
+    planDay: String? = null,
     sheetAtStart: SheetTarget? = null,
     menuAtStart: Boolean = false,
     settings: AppSettings? = null,
@@ -260,7 +261,7 @@ private fun PlanTab(
     settings: AppSettings,
     onChanged: () -> Unit,
     onEdit: () -> Unit,
-    planDay: LocalDate?,
+    planDay: String?,
     sheetAtStart: SheetTarget?,
     travelAtStart: String?,
     onPlace: (itemId: String) -> Unit,
@@ -286,9 +287,10 @@ private fun PlanTab(
     val expanded = settings.planExpanded
     val days = remember(trip.startDate, trip.endDate, all) { PlanDays.days(trip.startDate, trip.endDate, all) }
 
-    // The day asked for (the Calendar tab) and the Calendar view's picked day share one key: an epoch day or the Ideas.
-    var selectedKey by rememberSaveable(tripId) { mutableStateOf(planDay?.toEpochDay()?.toString()) }
-    LaunchedEffect(planDay) { if (planDay != null) selectedKey = planDay.toEpochDay().toString() }
+    // The day asked for (the Calendar tab, Add to plan) and the Calendar view's picked day share one key: an epoch day or
+    // the Ideas.
+    var selectedKey by rememberSaveable(tripId) { mutableStateOf(planDay) }
+    LaunchedEffect(planDay) { if (planDay != null) selectedKey = planDay }
     val selectedDay: LocalDate? = when (val k = selectedKey) {
         null -> PlanDays.initial(days, today)
         PLAN_IDEAS -> null

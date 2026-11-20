@@ -78,8 +78,11 @@ class FakeGoogleCloud(
     private val json = Json { ignoreUnknownKeys = true }
     private var n = 0
 
-    /** Every request, in order. */
-    val calls = mutableListOf<FakeCall>()
+    /**
+     * Every request, in order. Copy-on-write: background work (a renewal, an upload) adds to it while a test reads it,
+     * and a plain list then threw ConcurrentModificationException now and then (round 27's first full run).
+     */
+    val calls: MutableList<FakeCall> = java.util.concurrent.CopyOnWriteArrayList()
 
     /** Answers a request first when it gives one (a 503, a full Drive, a dropped connection: throw NetException). */
     var route: ((FakeCall) -> NetAnswer?)? = null

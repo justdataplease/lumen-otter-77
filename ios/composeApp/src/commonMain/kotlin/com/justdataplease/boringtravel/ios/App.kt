@@ -116,7 +116,7 @@ fun App(
         book, settings, version = version, media = media, followsClock = true, web = network, calendar = calendar, ai = ai,
         tracking = phone?.tracking, processor = phone?.processor, widget = phone?.widget, links = phone?.links,
         restored = restored, keep = keep, google = google, backups = backups, driveBackups = driveBackups, community = community,
-        together = together, writes = core.writes,
+        together = together, writes = core.writes, shares = phone?.shares,
     )
 }
 
@@ -145,13 +145,15 @@ class AppCore(file: TripFile, settingsFile: SettingsFile) {
 
 /**
  * What the phone runs beside the screens (round 10): route tracking and its stop processor, the home-screen widget's
- * snapshot and the links from widgets and Home Screen quick actions. Made once per run on iPhone (iosMain, IosApp).
+ * snapshot and the links from widgets and Home Screen quick actions; since round 27 what other apps shared into the app
+ * (the share extension's folder). Made once per run on iPhone (iosMain, IosApp).
  */
 class AppPhone(
     val tracking: RouteTracking? = null,
     val processor: TrackProcessor? = null,
     val widget: HomeWidget? = null,
     val links: AppLinks? = null,
+    val shares: ShareInbox? = null,
 )
 
 /** The app's version (Android's versionName, "1.21.1"), for what it writes with its name (an .ics file). */
@@ -223,9 +225,13 @@ sealed interface Place {
 
     /**
      * The AI planner for trip [tripId], or for a new trip when it is null; [start] is the step it opens at once (New
-     * trip's choices: [PlannerStart]).
+     * trip's choices: [PlannerStart]); [shared]: what was shared into the app for it (round 27: pictures, a file, a Google
+     * Doc's link or a longer text), taken by its chat once.
      */
-    data class Planner(val tripId: String? = null, val start: String? = null) : Place
+    data class Planner(
+        val tripId: String? = null, val start: String? = null,
+        val shared: com.justdataplease.boringtravel.ai.SharedItinerary? = null,
+    ) : Place
 
     /** Me › AI: the built-in planner or the traveller's own key. */
     data object AiSettings : Place
@@ -301,6 +307,8 @@ fun BoringTravelApp(
     together: com.justdataplease.boringtravel.together.Together? = null,
     /** Goes up after every write to the trips' store (AppCore's); null: the screens' own count of changes stands in. */
     writes: kotlinx.coroutines.flow.Flow<Int>? = null,
+    /** What other apps shared into this one (round 27: the share extension's folder; a folder in memory in tests). */
+    shares: ShareInbox? = null,
 ) {
     val rows = remember(book) { { id: String -> book.media(id) } }
     val appScope = rememberCoroutineScope()
@@ -362,7 +370,7 @@ fun BoringTravelApp(
         com.justdataplease.boringtravel.community.LocalCommunity provides communityHere,
         // The phone's language and region for what the Android screens write with them (Android's LocalConfiguration).
         LocalConfiguration provides remember { Configuration(LocaleList(listOf(Locale.getDefault()))) },
-        LocalTogether provides togetherHere,
+        LocalTogether provides togetherHere, LocalShareInbox provides shares,
     ) {
         AppFrame(book, settings, today, frame, startAt, version, media, followsClock, siteCopy, widget, restored, keep, writes)
     }
@@ -387,18 +395,22 @@ private fun AppFrame(
     val stack = remember {
         kept?.let { AppStack(it.stack, it.tabs) } ?: AppStack(listOf(if (settings.onboardingDone) Place.Trips else Place.Welcome) + startAt)
     }
-    // The section on show in the open trip, and the plan's day to show (the Calendar's day): at most one trip is open
-    // (TripNav.open), so one of each is enough.
+    // The section on show in the open trip, and the plan's day to show (the Calendar's day, Add to plan's day or Ideas:
+    // an epoch day or PLAN_IDEAS, Android's TripState.DAY): at most one trip is open (TripNav.open), so one of each is enough.
     var tripTab by remember {
         mutableStateOf(kept?.tripTab ?: TripNav.landingTab(startAt.filterIsInstance<Place.Trip>().lastOrNull()?.tab?.key))
     }
-    var tripDay by remember { mutableStateOf(kept?.tripDay) }
+    var tripDay by remember { mutableStateOf(kept?.tripDayKey) }
     // The note each Write on the stack is writing, by its entry's id: a restore reopens that note (Android's KEY_ID).
     val noteIds = remember { mutableStateMapOf<Int, String>() }
     // A shared trip's join link (round 26) waiting for its sheet: opened from outside (kept with the window, so it survives
     // the app being stopped, and waiting for Welcome, as Android's pendingJoin), or pasted on Trips (Android's typedJoin).
     var pendingJoin by remember { mutableStateOf(AppRestore.joinOf(restored)) }
     var typedJoin by remember { mutableStateOf<com.justdataplease.boringtravel.together.ShareLink?>(null) }
+    // What another app shared (round 27; Android's pendingPlace and pendingImport): a link for Add to plan (or a few words
+    // without one), and an itinerary or pictures for the planner. Both wait for Welcome and are kept with the window.
+    var pendingPlace by remember { mutableStateOf(AppRestore.sharedPlaceOf(restored)) }
+    var pendingImport by remember { mutableStateOf(AppRestore.sharedImportOf(restored)) }
     // The book isn't observable: a screen says when it changed something, and what is on screen is read again.
     var revision by remember { mutableIntStateOf(0) }
     val changed: () -> Unit = { revision++ }
@@ -571,10 +583,10 @@ private fun AppFrame(
     }
 
     /**
-     * Opens trip [tripId] on [tab] (else Plan), its plan on [day] when given (the Calendar's day), as Android's
+     * Opens trip [tripId] on [tab] (else Plan), its plan on [day] when given (an epoch day, or PLAN_IDEAS), as Android's
      * AppActions.openTrip and openPlanDay: never two trips on the stack.
      */
-    fun openTrip(tripId: String, tab: TripTab? = null, day: LocalDate? = null) {
+    fun openTrip(tripId: String, tab: TripTab? = null, day: String? = null) {
         val openIndex = stack.indexOfLast { it is Place.Trip }
         val open = (stack.entries.getOrNull(openIndex)?.place as? Place.Trip)?.tripId
         when (TripNav.open(tripId, open)) {
@@ -590,6 +602,14 @@ private fun AppFrame(
                 open(Place.Trip(tripId, tab))
             }
         }
+    }
+
+    /**
+     * The trip's plan on [day] (null: its Ideas), as Android's AppActions.openPlanDay: after a shared link was added there,
+     * or a day picked on the Calendar tab.
+     */
+    fun openPlanDay(tripId: String, day: LocalDate?) {
+        openTrip(tripId, TripTab.Plan, day?.toEpochDay()?.toString() ?: PLAN_IDEAS)
     }
 
     /** Write today (the Android app's AppActions.writeInTrip): the trip's Journal, then Write over it, dictating ([dictate]). */
@@ -709,6 +729,46 @@ private fun AppFrame(
         }
     }
 
+    // Sharing into the app (round 27). What the share extension left in the App Group's folder is taken at the start,
+    // each time the app is back on screen (ON_RESUME: also after a share sheet shown over the app itself) and when the
+    // scene says it is active (Swift's scenePhase), then sorted as Android's MainActivity sorts an intent: a join link
+    // for the Join sheet, a link for Add to plan, an itinerary or pictures for the planner. A newer share of the same kind
+    // takes the older one's place, as a new intent does on Android.
+    val shareInbox = LocalShareInbox.current
+    fun takeShares() {
+        val inbox = shareInbox ?: return
+        scope.launch {
+            val arrivals = kotlinx.coroutines.withContext(MediaWork) { inbox.take() }
+            for (a in arrivals) when (a) {
+                is ShareArrival.Join -> pendingJoin = a.link
+                is ShareArrival.Place -> pendingPlace = a.route
+                is ShareArrival.Import -> {
+                    // A share for the planner replaced before it was opened: its copies go.
+                    pendingImport?.let { old -> (old.pictures + listOfNotNull(old.uri)).filter { it.startsWith("picked/") }.forEach(media.files::delete) }
+                    pendingImport = a.share
+                }
+            }
+        }
+    }
+    LaunchedEffect(shareInbox, shareInbox?.asked) { takeShares() }
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { takeShares() }
+    // A share opens once Welcome is done (Android's AppNav: shareReady).
+    val shareReady = stack.last.place != Place.Welcome
+    // An itinerary or pictures: the planner, as a new trip, with them in its box (Android: navigate(Planner()) with the
+    // share in its saved state).
+    LaunchedEffect(pendingImport, shareReady) {
+        val share = pendingImport ?: return@LaunchedEffect
+        if (!shareReady) return@LaunchedEffect
+        pendingImport = null
+        open(Place.Planner(shared = share))
+    }
+    // A few words without a link: a short note, nothing opens (Android's snackbar).
+    LaunchedEffect(pendingPlace, shareReady) {
+        if (pendingPlace != ShareRoute.NoLink || !shareReady) return@LaunchedEffect
+        pendingPlace = null
+        say("Nothing to add: share a link")
+    }
+
     // The community (round 24): its screens are Android's, read in; what they reach of Android's AppGraph and AppActions
     // is this app's (ios/CommunityNav.kt). Writes made without a connection go each time the app comes back.
     val community = com.justdataplease.boringtravel.community.LocalCommunity.current
@@ -773,9 +833,15 @@ private fun AppFrame(
         }
     }
 
+    // Add to plan's AppGraph (round 27): the trips and plans as they change, the links' look, the frame's day.
+    val shareGraph = remember(book, web, scope) {
+        ShareGraph(book, web, scope, { revision }, changed) { if (followsClock) com.justdataplease.boringtravel.time.today() else today }
+    }
+
     val actions = Actions(
         changed = changed, back = ::back, open = ::open,
-        openTrip = { id, day -> openTrip(id, day = day) }, closeTrip = ::closeTrip,
+        // A day picked on the Calendar tab: the trip's plan on that day (Android's openPlanDay); else the trip as it opens.
+        openTrip = { id, day -> if (day != null) openPlanDay(id, day) else openTrip(id) }, closeTrip = ::closeTrip,
         welcomed = {
             settings.onboardingDone = true
             stack.reset(Place.Trips).forEach(::forget)
@@ -812,7 +878,9 @@ private fun AppFrame(
 
     // Where the app is, for the phone to keep with its window (iPhone: SwiftUI's scene storage), after every change.
     if (keep != null) {
-        val text by remember { derivedStateOf { AppRestore.encode(stack, tripTab, tripDay, noteIds, pendingJoin?.url) } }
+        val text by remember {
+            derivedStateOf { AppRestore.encodeKey(stack, tripTab, tripDay, noteIds, pendingJoin?.url, pendingPlace, pendingImport) }
+        }
         LaunchedEffect(text) { keep(text) }
     }
 
@@ -879,6 +947,31 @@ private fun AppFrame(
                             onClose = {
                                 pendingJoin = null
                                 typedJoin = null
+                            },
+                        )
+                    }
+                    // A link shared from another app (round 27): Android's own Add to plan, over the screen; it waits for
+                    // Welcome (Android's AppNav: shareReady).
+                    val shared = pendingPlace
+                    if (shared is ShareRoute.Place && shareReady) {
+                        com.justdataplease.boringtravel.ui.share.ShareToPlanSheet(
+                            shareGraph, shared.link,
+                            onAdded = { tripId, day ->
+                                pendingPlace = null
+                                openPlanDay(tripId, day)
+                            },
+                            onNewTrip = {
+                                pendingPlace = null
+                                open(Place.NewTrip)
+                            },
+                            onDismiss = { pendingPlace = null },
+                            onCopy = {
+                                pendingPlace = null
+                                open(Place.CopySite(address = shared.link.url))
+                            },
+                            onList = { tripId ->
+                                pendingPlace = null
+                                open(Place.CopySite(tripId, shared.link.url))
                             },
                         )
                     }
@@ -978,7 +1071,7 @@ private fun Screen(
     today: LocalDate,
     revision: Int,
     tripTab: TripTab,
-    tripDay: LocalDate?,
+    tripDay: String?,
     version: String,
     a: Actions,
     key: String,
@@ -1130,6 +1223,7 @@ private fun Screen(
                 revision = revision,
                 onReport = rememberAiReport(a.say),
                 chatAtStart = chat,
+                shared = place.shared,
             )
         }
         Place.AiSettings -> LocalPlannerKit.current?.let { kit -> AiScreen(kit.ownAi, onBack = a.back, onSay = a.say) }

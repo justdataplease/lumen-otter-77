@@ -170,6 +170,11 @@ fun main(args: Array<String>) {
         together(out)
         return
     }
+    // `-PshotsOnly=sharing`: only sharing into the app (round 27).
+    if (args.getOrNull(1) == "sharing") {
+        sharing(out)
+        return
+    }
     fun app(name: String, book: TripBook, vararg at: Place, look: Look = Look.Default, settings: AppSettings = AppSettings.ready(look), height: Int = HEIGHT, web: Web? = null) =
         shot(File(out, "$name.png"), height = height) {
             BoringTravelApp(book, settings, SAMPLE_TODAY, FRAME, startAt = at.toList(), version = PREVIEW_VERSION, web = web ?: Web.offline())
@@ -389,6 +394,7 @@ fun main(args: Array<String>) {
     accounts(out)
     community(out)
     together(out)
+    sharing(out)
     println("Screenshots in ${out.absolutePath}")
 }
 

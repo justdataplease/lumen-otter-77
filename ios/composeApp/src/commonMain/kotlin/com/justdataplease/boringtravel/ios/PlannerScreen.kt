@@ -74,6 +74,7 @@ import com.justdataplease.boringtravel.ai.PictureReading
 import com.justdataplease.boringtravel.ai.PlacedItem
 import com.justdataplease.boringtravel.ai.PlacedRemoval
 import com.justdataplease.boringtravel.ai.PlacedUpdate
+import com.justdataplease.boringtravel.ai.SharedItinerary
 import com.justdataplease.boringtravel.ai.TripChange
 import com.justdataplease.boringtravel.ai.tools.TravelBrief
 import com.justdataplease.boringtravel.compat.JavaFormat
@@ -126,10 +127,16 @@ fun PlannerScreen(
     onReport: (answer: String, model: String?) -> Unit,
     chatAtStart: PlannerChat? = null,
     attachAtStart: Boolean = false,
+    /** Something shared into the app for the planner (round 27; Android's sharedItinerary* in the entry's saved state). */
+    shared: SharedItinerary? = null,
 ) {
     val scope = rememberCoroutineScope()
     // The app keeps the chat while another screen covers this one (Me › AI, Copy from a link); previews bring their own.
     val chat = remember(side, tripId) { chatAtStart ?: PlannerChat(side, tripId, scope) }
+    // A share for the planner: pictures and a Google Doc's link attached, a text file or text in the box, nothing sent.
+    LaunchedEffect(chat, shared) {
+        if (shared != null) chat.receiveShared(shared.text, shared.uri, shared.pictures)
+    }
     val own by side.ownState.collectAsState()
     // The trip may change under the chat (a save, another screen): read again on each change.
     LaunchedEffect(revision) { chat.load() }
@@ -237,7 +244,7 @@ private fun Conversation(
                         // The attachments in plain sight before the first message; + offers them after.
                         Eyebrow(if (chat.isNewTrip) "Start from" else "Add from", Modifier.padding(top = 8.dp))
                         BtCard(Modifier.fillMaxWidth(), padding = PaddingValues(horizontal = 14.dp, vertical = 2.dp)) {
-                            AttachChoices(enabled = !chat.busy && !chat.applying, onPictures = onPickPictures, onLink = onAskLink)
+                            AttachChoices(enabled = !chat.busy && !chat.importing && !chat.applying, onPictures = onPickPictures, onLink = onAskLink)
                         }
                         // The travel agent without typing: its questions straight away, then the plan.
                         if (chat.available && chat.planEmpty) {
@@ -260,6 +267,7 @@ private fun Conversation(
             }
             chat.error?.let { e -> item { ErrorLine(e) } }
         }
+        ImportLine(chat)
         chat.proposal?.takeIf { !chat.busy }?.let { ReviewBar(chat, it, onSaved) }
         BtDivider()
         when (val state = dictation.state) {
@@ -267,7 +275,7 @@ private fun Conversation(
             is Dictation.State.Failed -> Text(state.message, Modifier.padding(horizontal = 16.dp, vertical = 6.dp), style = Bt.text.fine, color = Bt.colors.danger)
             else -> Unit
         }
-        val free = !chat.busy && !chat.applying
+        val free = !chat.busy && !chat.importing && !chat.applying
         AttachmentStrip(chat.attachments, enabled = free, onRemovePicture = chat::removePicture, onRemoveLink = chat::removeLink)
         Row(
             Modifier.fillMaxWidth().background(Bt.colors.bg).padding(horizontal = 12.dp, vertical = 10.dp),
@@ -299,6 +307,19 @@ private fun Conversation(
             val canSend = (ownKey || chat.available) && (chat.input.isNotBlank() || !chat.attachments.isEmpty) && free && !listening && chat.loaded
             BtIconButton(BtIcons.Send, "Send", onClick = { if (canSend) { focus.clearFocus(); chat.send() } }, filled = canSend, size = 48.dp)
         }
+    }
+}
+
+/** A text file shared to the app, read into the box: the step and Cancel while it reads, then what went wrong, if anything. */
+@Composable
+private fun ImportLine(chat: PlannerChat) {
+    if (!chat.importing && chat.importError == null) return
+    Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        if (chat.importing) {
+            Working("Reading the document")
+            BtGhostButton("Cancel", onClick = chat::cancelImport, modifier = Modifier.fillMaxWidth())
+        }
+        chat.importError?.let { ErrorLine(it) }
     }
 }
 

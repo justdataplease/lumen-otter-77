@@ -16,7 +16,8 @@ settings:
     SWIFT_VERSION: "5.0"
     # The App Group the app and its widgets share (the widgets read the snapshot the app writes there). It has to be
     # registered in the owner's Apple Developer account for a signed build; an unsigned build (the Simulator's CI)
-    # carries no entitlements, and then nothing is written and the widgets show their empty look.
+    # carries no entitlements, and then nothing is written and the widgets show their empty look. Since round 27 the
+    # share extension (BoringTravelShare) writes what other apps share into the same group's Shares/ folder.
     APP_GROUP: group.com.justdataplease.boringtravel
     # Round 24: a community post's link (https://justdataplease.com/apps/boringtravel/post/#<id>, Android's
     # CommunityLinks) opens the post in the app (a universal link). iOS checks the site's
@@ -48,6 +49,8 @@ targets:
         product: MapLibre
       # The home-screen widgets, embedded in the app.
       - target: BoringTravelWidget
+      # Round 27: BoringTravel in other apps' share sheets, embedded in the app.
+      - target: BoringTravelShare
     info:
       path: BoringTravel/Info.plist
       properties:
@@ -279,6 +282,61 @@ targets:
         TARGETED_DEVICE_FAMILY: "1"
         CODE_SIGN_STYLE: Automatic
         SKIP_INSTALL: true
+  # Round 27: BoringTravel in other apps' share sheets (Android: MainActivity's ACTION_SEND filters for text and 1–10
+  # pictures). Apple gives a share extension no way to open its app, and the app's Kotlin screens don't run in an
+  # extension, so ShareViewController.swift (SwiftUI only, no Kotlin) writes what was shared into the App Group's folder
+  # (Shares/) and says "Sent to BoringTravel. Open the app to finish."; the app takes it when it is next on screen and
+  # opens Android's own sheets (composeApp ios/ShareIn.kt). It uses no required-reason API (no UserDefaults, no file
+  # dates), so it needs no privacy manifest of its own.
+  BoringTravelShare:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: BoringTravelShare
+      # Roboto, as the widgets have it (composeApp's resources, kept once in git).
+      - path: ../composeApp/src/commonMain/composeResources/files/roboto/Roboto-Regular.ttf
+        buildPhase: resources
+      - path: ../composeApp/src/commonMain/composeResources/files/roboto/Roboto-Medium.ttf
+        buildPhase: resources
+    info:
+      path: BoringTravelShare/Info.plist
+      properties:
+        # The name the share sheet shows under the app's icon (Android's chooser shows "BoringTravel" for text and "Plan
+        # from picture" for pictures: one extension has one name on iPhone).
+        CFBundleDisplayName: BoringTravel
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        CFBundleAllowMixedLocalizations: true
+        UIAppFonts:
+          - Roboto-Regular.ttf
+          - Roboto-Medium.ttf
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.share-services
+          NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).ShareViewController
+          NSExtensionAttributes:
+            # What the share sheet offers BoringTravel for: text (Android's text/plain), one web link (a browser's page),
+            # 1–10 pictures (Android's image/*, at most PictureReading.MAX_PICTURES) and one file (a .txt for the
+            # planner; the dictionary's file key names no type, so the app says when a file isn't plain text).
+            NSExtensionActivationRule:
+              NSExtensionActivationSupportsText: true
+              NSExtensionActivationSupportsWebURLWithMaxCount: 1
+              NSExtensionActivationSupportsImageWithMaxCount: 10
+              NSExtensionActivationSupportsFileWithMaxCount: 1
+        BoringTravelAppGroup: $(APP_GROUP)
+    entitlements:
+      path: BoringTravelShare/BoringTravelShare.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - $(APP_GROUP)
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.justdataplease.boringtravel.share
+        PRODUCT_NAME: BoringTravelShare
+        TARGETED_DEVICE_FAMILY: "1"
+        CODE_SIGN_STYLE: Automatic
+        SKIP_INSTALL: true
+        # An extension may use only the API Apple allows extensions (UIApplication.shared is not among them).
+        APPLICATION_EXTENSION_API_ONLY: true
   # Opens the app in the Simulator and saves a picture of each screen, which CI uploads for review.
   BoringTravelTour:
     type: bundle.ui-testing

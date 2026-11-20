@@ -156,9 +156,22 @@ final class BoringTravelTour: XCTestCase {
         // Round 25's Mac run (44624529305) never found the row by its exact name: like Route tracking's, its label carries
         // its subtitle too ("Backup & sync" over "Off"), so the first that starts so is tapped. Still not found: the screen
         // goes into the log, to read the row's real label.
+        // Round 26's Mac run (44649074442) tapped the row but never saw "Last backup" on the page (no picture, no dump).
+        // The page is now known by the first line of its Drive card, the first thing under its title: "Google Drive not
+        // connected" (CI's build) or "Google Drive connected" (ios/BackupScreen.kt's DriveCard). Not the title itself:
+        // Me's row starts with the same words and is still there while the page fades in. `shows` matches what a label
+        // contains, so a line Compose merged with its neighbours (a card read as one label) still matches. Not seen: the
+        // page goes into the log, to read what it shows.
         if tap("Me", in: app) {
             if scrollTap("Backup & sync", prefix: true, in: app) {
-                if shows("Last backup", in: app) { snap("11-backup") }
+                if shows("Google Drive not connected", in: app) || shows("Google Drive connected", in: app, wait: 5) {
+                    gone("Your space", in: app, wait: 5)
+                    snap("11-backup")
+                } else {
+                    print("TOUR-SCREEN-BEGIN")
+                    print(app.debugDescription)
+                    print("TOUR-SCREEN-END")
+                }
                 _ = tap("Back", in: app)
             } else {
                 print("TOUR-SCREEN-BEGIN")
@@ -326,6 +339,26 @@ final class BoringTravelTour: XCTestCase {
                 if tap("All pages", in: app, wait: 10) {
                     _ = shows("Tap a page to change it.", in: app, wait: 15)
                     snap("27-book-pages-again")
+                }
+            }
+        }
+
+        // Round 27: sharing into the app. Another app's share sheet can't be driven from here, and the Simulator's
+        // unsigned build has no App Group for the share extension to write into, so the app starts once more with
+        // "-tourShare": a Google Maps place comes in as the Maps app shares it ("Kawai Kanjiro's House" over its link, with
+        // the pin in the link, so nothing is looked up to add it; IosApp.kt). Android's Add to plan opens over Trips with the
+        // tour's trip and its day; Add puts the place there and the trip's Plan opens on that day. Nothing is asked of the
+        // phone. No assertion: a step that doesn't show only ends the tour.
+        app.terminate()
+        app.launchArguments += ["-tourShare"]
+        app.launch()
+        if shows("Add to plan", in: app, wait: 60) {
+            _ = shows("Kyoto & Osaka", in: app, wait: 10)
+            snap("28-add-to-plan")
+            if tap("Add", in: app) {
+                gone("Add to plan", in: app, wait: 10)
+                if shows("Kawai Kanjiro", in: app, wait: 15) {
+                    snap("29-added-to-plan")
                 }
             }
         }
