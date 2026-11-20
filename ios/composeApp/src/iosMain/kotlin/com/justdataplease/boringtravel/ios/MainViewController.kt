@@ -48,6 +48,8 @@ fun MainViewController(maps: NativeMaps?, snapshots: NativeMapSnapshots?, restor
                 google = IosApp.google, backups = IosApp.backups, driveBackups = IosApp.driveBackups,
                 // The community (round 24): Firestore over REST on this build's Firebase ids.
                 community = IosApp.community,
+                // Travel together (round 26): the run's own, which the background turn shares.
+                together = IosApp.together,
             )
         }
     }

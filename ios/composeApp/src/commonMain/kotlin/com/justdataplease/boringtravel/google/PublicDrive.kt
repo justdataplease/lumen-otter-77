@@ -75,9 +75,28 @@ class PublicDrive(
         }
     }
 
+    /**
+     * Drive's MD5 of file [id], without downloading it, so an unchanged file isn't fetched again (round 26: another
+     * member's trip.btshare). Null without an API key (the public download address has no such answer) or when Drive
+     * doesn't say. Throws [NotSharedException] when the file isn't readable by link.
+     */
+    suspend fun checksum(id: String): String? {
+        if (!usesKey) return null
+        requireId(id)
+        val url = "$apiBase/drive/v3/files/$id?fields=md5Checksum&key=" + UrlCodec.queryComponent(apiKey)
+        return retrying(firstWait = retryWait) {
+            val answer = net.call(NetCall("GET", url, keyHeaders(), maxBytes = 64 * 1024, timeoutMs = 60_000))
+            check(answer)
+            runCatching { (DriveJson.parse(answer.body.decodeToString())["md5Checksum"] as? kotlinx.serialization.json.JsonPrimitive)?.content }
+                .getOrNull()?.takeIf { it.isNotBlank() }
+        }
+    }
+
     private fun keyHeaders(): Map<String, String> = buildMap { bundleId?.let { put("X-Ios-Bundle-Identifier", it) } }
 
     private fun check(r: NetAnswer) {
+        // Google's clock, for the rows' stamps (Android's onServerTime).
+        com.justdataplease.boringtravel.data.repo.Stamps.heard(r.header("Date"))
         val body = if (r.ok) "" else r.body.decodeToString().take(4096)
         // The app's own key was refused (its bundle id, the API switched off): not the link's fault, and said so.
         if ((r.code == 400 || r.code == 403) && KEY_TROUBLE.containsMatchIn(body)) {

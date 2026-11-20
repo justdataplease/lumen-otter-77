@@ -337,7 +337,8 @@ fun rememberDriveConnect(graph: CommunityGraph, onResult: (com.justdataplease.bo
 /**
  * "just now", "5 minutes ago", "yesterday" (Android's PostSyncSheet: DateUtils.getRelativeTimeSpanString to the minute,
  * its first letter made small): minutes and hours under a day, then calendar days under a week ("yesterday", "3 days
- * ago"), then the date with its year ("Nov 12, 2026" in English, in the phone's own order elsewhere).
+ * ago"), then the date with its year ("Nov 12, 2026" in English, in the phone's own order elsewhere), all in the phone's
+ * language (round 26), as DateUtils writes them. "just now" is Android's own English.
  */
 internal fun ago(at: Long): String {
     val now = com.justdataplease.boringtravel.time.nowMs()
@@ -345,24 +346,26 @@ internal fun ago(at: Long): String {
     return relative(at, now).replaceFirstChar { it.lowercase() }
 }
 
-/** Android's DateUtils.getRelativeTimeSpanString(at, now, MINUTE_IN_MILLIS) in English, for a moment in the past. */
-internal fun relative(at: Long, now: Long): String {
+/**
+ * Android's DateUtils.getRelativeTimeSpanString(at, now, MINUTE_IN_MILLIS) for a moment in the past, in language [tag]
+ * (the phone's): ICU's long relative words (compat's [com.justdataplease.boringtravel.compat.relativeAgo]), the day's
+ * own name for yesterday and today with its first letter capital as Android's sentence start, the date past a week.
+ */
+internal fun relative(at: Long, now: Long, tag: String = com.justdataplease.boringtravel.compat.phoneLanguageTag()): String {
     val d = (now - at).coerceAtLeast(0)
-    fun plural(n: Long, unit: String) = if (n == 1L) "1 $unit ago" else "$n ${unit}s ago"
     return when {
-        d < HOUR -> plural(d / MINUTE, "minute")
-        d < DAY -> plural(d / HOUR, "hour")
+        d < HOUR -> com.justdataplease.boringtravel.compat.relativeAgo(d / MINUTE, com.justdataplease.boringtravel.compat.RelativeUnit.MINUTES, tag)
+        d < DAY -> com.justdataplease.boringtravel.compat.relativeAgo(d / HOUR, com.justdataplease.boringtravel.compat.RelativeUnit.HOURS, tag)
         d < WEEK -> {
             val days = com.justdataplease.boringtravel.time.localDateAt(now, null).toEpochDay() -
                 com.justdataplease.boringtravel.time.localDateAt(at, null).toEpochDay()
             when (days) {
-                0L -> "Today"
-                1L -> "Yesterday"
-                else -> "$days days ago"
+                0L, 1L -> com.justdataplease.boringtravel.compat.relativeDay(days.toInt(), tag).replaceFirstChar { it.uppercaseChar() }
+                else -> com.justdataplease.boringtravel.compat.relativeAgo(days, com.justdataplease.boringtravel.compat.RelativeUnit.DAYS, tag)
             }
         }
         // FORMAT_SHOW_DATE | FORMAT_SHOW_YEAR | FORMAT_ABBREV_MONTH: "Nov 12, 2026" (the phone's own order: "12 Nov 2026").
-        else -> com.justdataplease.boringtravel.compat.skeletonDate("yMMMd", com.justdataplease.boringtravel.time.localDateAt(at, null).toEpochDay())
+        else -> com.justdataplease.boringtravel.compat.skeletonDate("yMMMd", com.justdataplease.boringtravel.time.localDateAt(at, null).toEpochDay(), tag)
     }
 }
 

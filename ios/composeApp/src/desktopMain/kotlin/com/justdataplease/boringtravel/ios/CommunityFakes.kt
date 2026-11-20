@@ -51,6 +51,15 @@ class FakeFirestore(private val project: String = "test-project") {
     /** The server's clock: each write's time a millisecond later. */
     var clock = 1_795_000_000_000L
 
+    /** How many lists of a trip's mailbox were read (round 26: the newest entry's look and the whole box alike). */
+    var mailReads = 0
+
+    /** A trip's mailbox's entries as stored (round 26), by the poster's uid. */
+    fun mailbox(box: String): Map<String, Map<String, Any?>> =
+        docs.filterKeys { it.startsWith("tripMail/$box/members/") }.mapKeys { it.key.substringAfterLast('/') }
+
+    private val BOX = Regex("[0-9a-f]{64}")
+
     private val json = Json { ignoreUnknownKeys = true }
     private val root get() = "projects/$project/databases/(default)/documents"
 
@@ -221,6 +230,15 @@ class FakeFirestore(private val project: String = "test-project") {
             }
         }
         if (collection == "blocked" && parent != "users/$uid") return error(c, 403, "PERMISSION_DENIED", "Missing or insufficient permissions.")
+        // Round 26, a trip's mailbox: listed by anyone signed in who knows the box, at most 50 at a time; never across boxes.
+        if (collection == "members") {
+            val box = parent.split('/')
+            val limit = (q["limit"] as? JsonPrimitive)?.contentOrNull?.toIntOrNull()
+            if (all || box.size != 2 || box[0] != "tripMail" || !BOX.matches(box[1]) || limit == null || limit > 50) {
+                return error(c, 403, "PERMISSION_DENIED", "Missing or insufficient permissions.")
+            }
+            mailReads++
+        }
         if (collection == "profiles") return error(c, 403, "PERMISSION_DENIED", "Missing or insufficient permissions.")
         val found = run(parent, q)
         val answer = if (found.isEmpty()) {
@@ -382,6 +400,18 @@ class FakeFirestore(private val project: String = "test-project") {
                     if (p[1] != uid || p[3] == uid) return "Only your own blocks"
                     if (now != null && (now.keys != setOf("username", "at") || (now["username"] as? String)?.let { it.length <= 20 } != true || now["at"] != time)) {
                         return "A block's fields"
+                    }
+                }
+                // Round 26, the trip mailboxes: each person writes only their own entry, exactly {member, fileId, at} with
+                // the server's time, in a box named by 64 hex characters; nothing else under tripMail.
+                p[0] == "tripMail" -> {
+                    if (p.size != 4 || p[2] != "members" || !BOX.matches(p[1])) return "Only a member's entry in a box"
+                    if (p[3] != uid) return "Only your own entry"
+                    if (now != null) {
+                        if (now.keys != setOf("member", "fileId", "at")) return "An entry's fields"
+                        if ((now["member"] as? String)?.let { Regex("[A-Za-z0-9_-]{1,128}").matches(it) } != true) return "An entry's member"
+                        if ((now["fileId"] as? String)?.let { Regex("[A-Za-z0-9_-]{5,200}").matches(it) } != true) return "An entry's file"
+                        if (now["at"] != time) return "An entry's time is the server's"
                     }
                 }
                 p.size == 4 && p[0] == "users" && (p[2] == "following" || p[2] == "followers") -> {

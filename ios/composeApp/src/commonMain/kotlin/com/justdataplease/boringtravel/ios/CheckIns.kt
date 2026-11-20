@@ -104,13 +104,15 @@ class JournalCheckIns(private val book: TripBook, private val store: CheckInStor
      * Today's check-in note for [itemId], made (kept with the trips) or the one already there; the plan is read again,
      * so a deleted or moved place can't be confirmed. Throws IllegalArgumentException with the words to show.
      */
-    fun confirm(prompt: CheckInPrompt, itemId: String, now: Long, zone: String? = null): Entry {
+    fun confirm(prompt: CheckInPrompt, itemId: String, now: Long, zone: String? = null, member: String? = null): Entry {
         val trip = requireNotNull(book.trip(prompt.tripId)) { "This trip is no longer available." }
         val place = DailyCheckIn.places(trip, book.items(trip.id), DailyCheckIn.localDay(now, zone)).firstOrNull { it.itemId == itemId }
         requireNotNull(place) { "Today's plan changed. Write a note or reopen the journal." }
-        val id = DailyCheckIn.entryId(prompt.tripId, prompt.day)
+        // In a shared trip each member's check-in is their own entry ([member]: this phone's id there; round 26), as the
+        // same id on every phone would clash.
+        val id = DailyCheckIn.entryId(prompt.tripId, prompt.day, member)
         val existing = book.snapshot.entries.firstOrNull { it.id == id }
-        val entry = DailyCheckIn.draft(existing, prompt, place, now, zone)
+        val entry = DailyCheckIn.draft(existing, prompt, place, now, zone, member)
         if (entry !== existing) book.putRows(entries = listOf(entry))
         return entry
     }
@@ -139,6 +141,8 @@ fun DailyJournalCheckIn(
     val location = LocalWeb.current.location
     val scope = rememberCoroutineScope()
     val checkIns = remember(book, settings) { JournalCheckIns(book, settings.checkIns) }
+    // A shared trip's check-in is this member's own (round 26).
+    val together = LocalTogether.current
     // The screens' day: the clock, moved to [today] when they show another one.
     val shift = remember(today) { nowOn(today) - nowMs() }
     var clock by remember { mutableLongStateOf(nowMs() + shift) }
@@ -238,7 +242,7 @@ fun DailyJournalCheckIn(
                 saving = true
                 message = null
                 try {
-                    val entry = checkIns.confirm(current, place.itemId, nowMs() + shift)
+                    val entry = checkIns.confirm(current, place.itemId, nowMs() + shift, member = together?.state?.value?.of(current.tripId)?.me)
                     prompt = null
                     onChanged()
                     onWrite(entry)

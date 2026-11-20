@@ -40,7 +40,23 @@ class Community(
     private val deleteDriveFile: (suspend (String) -> Unit)? = null,
     /** The app's Drive client: a post's folder, photos and clip (round 25). */
     private val drive: () -> com.justdataplease.boringtravel.google.RestDriveApi? = { null },
+    /**
+     * Travel together's trip mailboxes (round 26) in the same Firestore, as the same signed-in account (Android's
+     * firestoreMail over the community's Firebase); null without Firebase in the build.
+     */
+    val tripMail: com.justdataplease.boringtravel.together.MailService? = null,
 ) {
+    /**
+     * What Delete account takes out first, once signed in and before the profile goes (Android's deleteAccount:
+     * Travel together's entries in the trip mailboxes, which nobody can take out once the Firebase account is gone).
+     * Throws when it couldn't: then nothing more is deleted, so it can be tried again.
+     */
+    var beforeDelete: suspend () -> Unit = {}
+
+    /** The trips' mailboxes with the sign-in they need (Android's MailAccess); null without Firebase. */
+    fun mailAccess(): com.justdataplease.boringtravel.together.MailAccess? =
+        tripMail?.takeIf { available }?.let { com.justdataplease.boringtravel.together.MailAccess(it) { quiet -> signIn(quiet) == null } }
+
     /** Android's debug builds can use the Firebase emulators; this app's tests use in-memory fakes instead. */
     val usesEmulator: Boolean get() = false
 
@@ -476,6 +492,8 @@ class Community(
             if (!r.isNullOrEmpty()) throw IllegalStateException(r)
         }
         if (a.user.value == null) return
+        // The entries in the trip mailboxes first (Travel together, round 26): a failure throws, so the account stays.
+        beforeDelete()
         deleteProfile()
     }
 
@@ -549,7 +567,11 @@ class Community(
             if (!auth.configured) return Community(UnavailableCommunity, auth, pictures, scope)
             val fs = com.justdataplease.boringtravel.firebase.FirestoreRest(net, config.projectId, { fresh -> auth.token(fresh) }, appCheck)
             val repo = FirestoreCommunity(fs, auth, CommunityCache(cache), CommunityOutbox(settings))
-            return Community(repo, auth, pictures, scope, driveConnected, deleteDriveFile, drive).also { c ->
+            // The trips' mailboxes as the same account (Android: FirebaseAuth's current user).
+            val uid = kotlinx.coroutines.flow.MutableStateFlow(auth.user.value?.uid)
+            scope.launch { auth.user.collect { uid.value = it?.uid } }
+            val mail = com.justdataplease.boringtravel.together.FirestoreTripMail(fs, uid)
+            return Community(repo, auth, pictures, scope, driveConnected, deleteDriveFile, drive, mail).also { c ->
                 c.offerApple { google?.appleConfigured == true }
             }
         }

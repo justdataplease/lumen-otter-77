@@ -63,6 +63,52 @@ object Collections {
     }
 }
 
+/**
+ * java.util.concurrent.ConcurrentHashMap as the Android app's shared trips use it (round 26: together/TogetherMail.kt's
+ * failed posts, SendQueue's waiting trips): each call under [synchronized]'s lock. Its entries, keys and values are
+ * copies taken under the lock (Kotlin/Native's map entries must not be read after the map changed), so changing them
+ * doesn't reach the map.
+ */
+class ConcurrentHashMap<K, V> : AbstractMutableMap<K, V>() {
+    private val map = LinkedHashMap<K, V>()
+
+    override val size: Int get() = synchronized(this) { map.size }
+
+    override fun get(key: K): V? = synchronized(this) { map[key] }
+
+    override fun containsKey(key: K): Boolean = synchronized(this) { map.containsKey(key) }
+
+    override fun put(key: K, value: V): V? = synchronized(this) { map.put(key, value) }
+
+    override fun remove(key: K): V? = synchronized(this) { map.remove(key) }
+
+    override fun clear() = synchronized(this) { map.clear() }
+
+    override val entries: MutableSet<MutableMap.MutableEntry<K, V>>
+        get() = synchronized(this) { LinkedHashMap(map) }.entries
+
+    companion object {
+        /** ConcurrentHashMap.newKeySet(): a set each call of which is under the lock. */
+        fun <T> newKeySet(): MutableSet<T> = LockedSet()
+    }
+
+    private class LockedSet<T> : AbstractMutableSet<T>() {
+        private val set = LinkedHashSet<T>()
+
+        override val size: Int get() = synchronized(this) { set.size }
+
+        override fun contains(element: T): Boolean = synchronized(this) { set.contains(element) }
+
+        override fun add(element: T): Boolean = synchronized(this) { set.add(element) }
+
+        override fun remove(element: T): Boolean = synchronized(this) { set.remove(element) }
+
+        override fun clear() = synchronized(this) { set.clear() }
+
+        override fun iterator(): MutableIterator<T> = synchronized(this) { LinkedHashSet(set) }.iterator()
+    }
+}
+
 /** java.util.concurrent.atomic.AtomicInteger: a counter several coroutines add to. */
 @OptIn(ExperimentalAtomicApi::class)
 class AtomicInteger(initial: Int = 0) {
@@ -81,11 +127,20 @@ class MessageDigest private constructor() {
 
     fun update(bytes: ByteArray, offset: Int, length: Int) = sum.update(bytes, offset, length)
 
+    /** One byte (round 26: TogetherMerge's fingerprint marks the end of each part with one). */
+    fun update(b: Byte) = sum.update(byteArrayOf(b))
+
     /** The digest's bytes; the digest starts again, as Java's does. */
     fun digest(): ByteArray {
         val hex = sum.hex()
         sum = com.justdataplease.boringtravel.ios.Sha256()
         return ByteArray(hex.length / 2) { hex.substring(it * 2, it * 2 + 2).toInt(16).toByte() }
+    }
+
+    /** [input] added, then the digest (Java's digest(byte[])). */
+    fun digest(input: ByteArray): ByteArray {
+        update(input)
+        return digest()
     }
 
     companion object {

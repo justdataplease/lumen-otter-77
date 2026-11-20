@@ -114,8 +114,10 @@ fun WriteScreen(
 ) {
     val kit = LocalMediaKit.current
     val google = com.justdataplease.boringtravel.google.LocalGoogle.current
+    val together = LocalTogether.current
     val model = remember(book, entryId) {
-        WriteModel(book, kit, tripId, entryId, noteTime(today), planItemId, photoDefaults, goesToDrive = { google?.backsUpMedia == true })
+        // A note's media go up to Drive with a Drive backup, or in a shared trip (Android's goesToDrive, round 26).
+        WriteModel(book, kit, tripId, entryId, noteTime(today), planItemId, photoDefaults, goesToDrive = { google?.backsUpMedia == true || together?.isShared(tripId) == true })
     }
     // The note's id, for the app to reopen it after the phone closed the app (Android's WriteViewModel KEY_ID).
     LaunchedEffect(model) { onNoteId(model.id) }

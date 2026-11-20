@@ -85,6 +85,12 @@ class ScreenContext(
     }
 }
 
+/**
+ * Android's findActivity (ui/onboarding/GoogleUi.kt), as Travel together's sheets hand a context to Google's steps (round
+ * 26): here the screen's context itself, the app's one window.
+ */
+fun Context.findActivity(): Context? = this
+
 /** Compose's LocalContext on Android: here the screen's context ([ScreenContext]), which the app provides at its root. */
 val LocalContext = staticCompositionLocalOf<Context> { Context(MemorySettingsFile()) }
 

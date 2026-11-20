@@ -73,6 +73,13 @@ object Deeplink {
      */
     const val POST = "post:"
 
+    /**
+     * A shared trip's join link opened with the app (round 26; Android's MainActivity.receiveJoin): "join:" and the link
+     * as it came, https://justdataplease.com/apps/boringtravel/join/#… (a universal link once the site has the owner's
+     * apple-app-site-association) or boringtravel://join#…, everything after "#" kept (ShareLink reads it).
+     */
+    const val JOIN = "join:"
+
     private val known = setOf(WRITE, CAMERA, PHOTO, VOICE, NEW_TRIP, TODAY, TRACKING)
 
     /** boringtravel://post/#<id>, boringtravel://post#<id>, boringtravel://post?id=<id> or boringtravel://post/<id>. */
@@ -83,10 +90,14 @@ object Deeplink {
         val text = link.trim()
         com.justdataplease.boringtravel.community.CommunityLinks.find(text)?.let { return POST + it }
         APP_POST.matchEntire(text)?.let { return POST + it.groupValues[1] }
+        if (com.justdataplease.boringtravel.together.ShareLink.find(text) != null) return JOIN + text
         val rest = text.removePrefix("$SCHEME://").takeIf { it != text } ?: return null
         val action = rest.substringBefore('?').substringBefore('#').trimEnd('/').lowercase()
         return action.takeIf { it in known }
     }
+
+    /** The join link of a [JOIN] action, or null. */
+    fun joinOf(action: String): String? = if (action.startsWith(JOIN)) action.removePrefix(JOIN).takeIf { it.isNotEmpty() } else null
 
     /** The post id of a [POST] action, or null. */
     fun postOf(action: String): String? = if (action.startsWith(POST)) action.removePrefix(POST).takeIf { it.isNotEmpty() } else null

@@ -39,8 +39,8 @@ data class MergePlan(
             countryMarks.isEmpty() && books.isEmpty() && clearRoutes.isEmpty()
 }
 
-/** The stamp of a change to a row last stamped [previous]: now, and never earlier (the Android app's Stamps.next). */
-private fun nextStamp(previous: Long): Long = maxOf(nowMs(), previous + 1)
+/** The stamp of a change to a row last stamped [previous]: now on Google's clock, and never earlier (Stamps.next, as Android's). */
+private fun nextStamp(previous: Long): Long = com.justdataplease.boringtravel.data.repo.Stamps.next(previous)
 
 /**
  * How a restore puts a backup on the phone (owner, 2026-11-12: "if restore, restore entirely, like a database"): the

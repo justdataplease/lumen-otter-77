@@ -1,6 +1,7 @@
 package com.justdataplease.boringtravel.google
 
 import com.justdataplease.boringtravel.compat.newBuilder
+import com.justdataplease.boringtravel.data.repo.Stamps
 import com.justdataplease.boringtravel.compat.toHttpUrl
 import com.justdataplease.boringtravel.io.IOException
 import com.justdataplease.boringtravel.ios.MediaFiles
@@ -396,24 +397,27 @@ class RestDriveApi(
 
     private fun parseFile(o: JsonObject): RemoteFile = DriveJson.parseFile(o) ?: throw DriveException(500, "Google Drive didn't return the file.")
 
-    /** Adds the access token; a 401 gets one fresh token and one more try. */
+    /**
+     * Adds the access token; a 401 gets one fresh token and one more try. Each answer's Date header sets the rows'
+     * clock (Stamps: Google's time, as Android's RestDriveApi tells it; round 26).
+     */
     private suspend fun send(method: String, address: String, body: ByteArray? = null, contentType: String? = null, headers: Map<String, String> = emptyMap()): NetAnswer {
         if (!connected()) throw DriveNotConnectedException()
         val token = tokens.token()
-        val first = net.call(NetCall(method, address, headers + ("Authorization" to "Bearer $token"), body, contentType))
+        val first = net.call(NetCall(method, address, headers + ("Authorization" to "Bearer $token"), body, contentType)).also { Stamps.heard(it.header("Date")) }
         if (first.code != 401) return first
         val fresh = tokens.refreshed(token)
-        return net.call(NetCall(method, address, headers + ("Authorization" to "Bearer $fresh"), body, contentType))
+        return net.call(NetCall(method, address, headers + ("Authorization" to "Bearer $fresh"), body, contentType)).also { Stamps.heard(it.header("Date")) }
     }
 
     /** A GET whose answer goes to [piece] as it comes (a file's bytes); the token as [send] adds it. */
     private suspend fun sendDownload(address: String, piece: (ByteArray, Int) -> Unit): NetAnswer {
         if (!connected()) throw DriveNotConnectedException()
         val token = tokens.token()
-        val first = net.fetch(NetCall("GET", address, mapOf("Authorization" to "Bearer $token")), piece)
+        val first = net.fetch(NetCall("GET", address, mapOf("Authorization" to "Bearer $token")), piece).also { Stamps.heard(it.header("Date")) }
         if (first.code != 401) return first
         val fresh = tokens.refreshed(token)
-        return net.fetch(NetCall("GET", address, mapOf("Authorization" to "Bearer $fresh")), piece)
+        return net.fetch(NetCall("GET", address, mapOf("Authorization" to "Bearer $fresh")), piece).also { Stamps.heard(it.header("Date")) }
     }
 
     private suspend fun json(method: String, address: String, body: ByteArray? = null, contentType: String? = null): JsonObject {

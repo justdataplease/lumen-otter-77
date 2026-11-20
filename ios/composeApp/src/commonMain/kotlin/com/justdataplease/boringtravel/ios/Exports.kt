@@ -202,6 +202,8 @@ class AppFileStore(private val files: MediaFiles) : File.Store {
     override fun isFile(path: String): Boolean = (files.size(path) ?: 0L) > 0L
 
     override fun read(path: String): ByteArray? = files.read(path)
+
+    override fun size(path: String): Long? = files.size(path)
 }
 
 /** A file under the app's files written as it goes, as TripDocx writes into a FileOutputStream. */

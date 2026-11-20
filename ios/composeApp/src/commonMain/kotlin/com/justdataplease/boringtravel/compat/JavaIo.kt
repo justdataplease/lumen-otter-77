@@ -162,6 +162,9 @@ fun Writer.buffered(bufferSize: Int): Writer = BufferedWriter(this, bufferSize)
 abstract class InputStream : AutoCloseable {
     abstract fun read(): Int
 
+    /** Up to [b]'s size into [b]; how many, or -1 at the end (Java's read(byte[])). */
+    fun read(b: ByteArray): Int = read(b, 0, b.size)
+
     /** Up to [len] bytes into [b] from [off]; how many, or -1 at the end. */
     open fun read(b: ByteArray, off: Int, len: Int): Int {
         if (len == 0) return 0
@@ -253,9 +256,19 @@ class File(val path: String, private val store: Store = SystemStore) {
     interface Store {
         fun isFile(path: String): Boolean
         fun read(path: String): ByteArray?
+
+        /** Bytes in the file at [path]; null when there is none (round 26: a shared trip's photos by their size). */
+        fun size(path: String): Long? = read(path)?.size?.toLong()
     }
 
     val name: String get() = path.trimEnd('/').substringAfterLast('/')
+
+    /** The folder the file is in; null at the top (java.io.File.getParentFile). */
+    val parentFile: File? get() {
+        val p = path.trimEnd('/', '\\')
+        val at = maxOf(p.lastIndexOf('/'), p.lastIndexOf('\\'))
+        return if (at <= 0) null else File(p.substring(0, at), store)
+    }
 
     val isFile: Boolean get() = store.isFile(path)
 
@@ -264,9 +277,12 @@ class File(val path: String, private val store: Store = SystemStore) {
     fun exists(): Boolean = if (store !== SystemStore) store.isFile(path) else runCatching { SystemFileSystem.exists(Path(path)) }.getOrDefault(false)
 
     /** Bytes in the file; 0 when there is none. */
-    fun length(): Long = runCatching { SystemFileSystem.metadataOrNull(Path(path))?.size }.getOrNull()?.takeIf { it >= 0 } ?: 0L
+    fun length(): Long =
+        if (store !== SystemStore) store.size(path)?.takeIf { it >= 0 } ?: 0L
+        else runCatching { SystemFileSystem.metadataOrNull(Path(path))?.size }.getOrNull()?.takeIf { it >= 0 } ?: 0L
 
-    fun mkdirs(): Boolean = runCatching { SystemFileSystem.createDirectories(Path(path), mustCreate = false) }.isSuccess && isDirectory
+    /** The folder and those above it (the app's files make their folders themselves). */
+    fun mkdirs(): Boolean = if (store !== SystemStore) true else runCatching { SystemFileSystem.createDirectories(Path(path), mustCreate = false) }.isSuccess && isDirectory
 
     /** True when it was there and is gone (a folder only when empty, as Java's). */
     fun delete(): Boolean = exists() && runCatching { SystemFileSystem.delete(Path(path), mustExist = true) }.isSuccess

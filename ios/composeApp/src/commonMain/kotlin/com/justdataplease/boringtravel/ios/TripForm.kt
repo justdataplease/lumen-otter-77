@@ -263,13 +263,23 @@ fun TripFormScreen(
         },
         onDismiss = { picking = false },
     )
+    // A shared trip others are in is left instead (Android's Deletions.deleteTrip).
+    val deletions = LocalTogetherGraph.current?.deletions
+    val deleteScope = rememberCoroutineScope()
     if (confirmDelete && tripId != null) DeleteTripDialog(
         onConfirm = {
-            confirmDelete = false
-            removeTripAndFiles(book, files, tripId)
-            onDeleted()
+            if (deletions == null) {
+                confirmDelete = false
+                removeTripAndFiles(book, files, tripId)
+                onDeleted()
+            } else deleteScope.launch {
+                deletions.deleteTrip(tripId)
+                confirmDelete = false
+                onDeleted()
+            }
         },
         onDismiss = { confirmDelete = false },
+        leaves = deletions?.leaves(tripId) == true,
     )
 }
 
@@ -286,12 +296,13 @@ object DeleteTripText {
  * journal: [removeTripAndFiles]). Both buttons are held once Delete is tapped.
  */
 @Composable
-fun DeleteTripDialog(onConfirm: () -> Unit, onDismiss: () -> Unit) {
+fun DeleteTripDialog(onConfirm: () -> Unit, onDismiss: () -> Unit, leaves: Boolean = false) {
     var busy by remember { mutableStateOf(false) }
+    // A shared trip others are in is left instead (Travel together, round 26), with that sheet's words.
     BtConfirmDialog(
-        title = DeleteTripText.TITLE,
-        body = DeleteTripText.BODY,
-        confirm = "Delete", danger = true, busy = busy,
+        title = if (leaves) "Leave this trip?" else DeleteTripText.TITLE,
+        body = if (leaves) com.justdataplease.boringtravel.ui.together.TogetherText.LEAVE else DeleteTripText.BODY,
+        confirm = if (leaves) "Leave" else "Delete", danger = true, busy = busy,
         onConfirm = {
             busy = true
             onConfirm()

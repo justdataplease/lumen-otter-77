@@ -233,7 +233,8 @@ class DriveBackups(
         val trips = snapshot.trips.filter { it.deletedAt == null }.map { it.id }
         val clipRows = clips.map(::clipRow)
         val data = snapshot.toData(settings.backupPreferences()).copy(
-            sharedTrips = book.sharedTrips,
+            // Shared trips' state travels with the backup, so a new phone keeps syncing them (round 26).
+            sharedTrips = files.sharedTrips(),
             // The clips on this phone, and those a restore listed whose videos aren't here (kept for the other phone).
             savedClips = (clipRows + book.savedClips.orEmpty().filter { r -> r.tripId in trips && clipRows.none { it.id == r.id } }).takeIf { it.isNotEmpty() },
             clipEdits = (book.clipEdits.orEmpty().filterKeys { it in trips } + BackupExtras.clipEdits(media, trips)).takeIf { it.isNotEmpty() },

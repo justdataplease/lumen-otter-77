@@ -120,6 +120,8 @@ fun TripsHome(
     onExitDemo: () -> Unit = {},
     onOpenBackup: () -> Unit = {},
     onRestored: () -> Unit = {},
+    /** The last row's "Join a friend's trip": a pasted link (round 26, Android's JoinTripRow, read in). */
+    onJoin: (com.justdataplease.boringtravel.together.ShareLink) -> Unit = {},
 ) {
     val prefs = settings ?: remember { AppSettings.ready() }
     // A phone that has never backed up looks in Drive first and asks about restoring (RestoreOffer, since round 23).
@@ -192,6 +194,8 @@ fun TripsHome(
             section("Past", s.past, entries, past = true)
             if (loose > 0) item(key = "loose") { LooseNotesCard(loose, onClick = onLooseNotes) }
             if (!demoMode && all.isNotEmpty()) item(key = "ideas") { TripIdeasRow(onClick = onOpenIdeas) }
+            // A friend's trip link pasted here joins it (Travel together, round 26: the Android app's own row and dialog).
+            item(key = "join") { com.justdataplease.boringtravel.ui.together.JoinTripRow(onJoin = onJoin) }
         }
     }
 }

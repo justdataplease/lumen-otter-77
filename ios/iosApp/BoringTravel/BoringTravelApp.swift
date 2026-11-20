@@ -36,7 +36,9 @@ private struct RootView: SwiftUI.View {
         ComposeScreen(screens: $screens).ignoresSafeArea()
             // A widget's button (boringtravel://write, camera, voice, today), and since round 24 a community post's link:
             // the app's own (boringtravel://post/#<id>) or the web one as a universal link
-            // (https://justdataplease.com/apps/boringtravel/post/#<id>). Kotlin reads both (Deeplink.of).
+            // (https://justdataplease.com/apps/boringtravel/post/#<id>). Kotlin reads both (Deeplink.of). Since round 26
+            // also a shared trip's join link (boringtravel://join#… or …/apps/boringtravel/join/#…): absoluteString keeps
+            // everything after "#", which is where the link's data is.
             .onOpenURL { url in _ = IosAppKt.openAppLink(url: url.absoluteString) }
             // A universal link handed over as a browsing activity (iOS may use either way); a post already open is
             // not opened twice.

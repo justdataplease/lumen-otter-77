@@ -52,6 +52,11 @@ import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.Lifecycle
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import com.justdataplease.boringtravel.clip.RouteLegKey
 import com.justdataplease.boringtravel.data.db.PlanItem
 import com.justdataplease.boringtravel.data.db.Trip
@@ -145,6 +150,8 @@ fun TripPage(
      * PostSyncSheet, read in), drawn with its onClose.
      */
     postSheet: (@Composable (onClose: () -> Unit) -> Unit)? = null,
+    /** The ⋮'s Travel together open at the start (the previews). */
+    togetherAtStart: Boolean = false,
 ) {
     val trip = remember(book, tripId, revision) { book.trip(tripId) }
     var calendarOpen by remember { mutableStateOf(calendarAtStart) }
@@ -152,7 +159,23 @@ fun TripPage(
     val files = LocalMediaKit.current.files
     var deleting by remember { mutableStateOf(false) }
     var postOpen by rememberSaveable { mutableStateOf(false) }
-    // Deleted elsewhere while open: the screen closes itself (the Android app's TripScreen).
+    // Travel together (round 26): who the trip is shared with, the sheet, and the trip kept in step while it shows.
+    var togetherOpen by rememberSaveable { mutableStateOf(togetherAtStart) }
+    val graph = LocalTogetherGraph.current
+    val together = LocalTogether.current
+    val sharing = together?.state?.collectAsState()?.value
+    val shared = sharing?.of(tripId)
+    val lifecycle = androidx.lifecycle.compose.LocalLifecycleOwner.current.lifecycle
+    LaunchedEffect(tripId, shared != null, lifecycle) {
+        // A shared trip keeps in step with the others while it is open and in front (not with the app in the background):
+        // Android's repeatOnLifecycle(STARTED), on the lifecycle's own state (repeatOnLifecycle itself runs on
+        // Dispatchers.Main, which the desktop's tests don't have).
+        if (shared != null && together != null) {
+            lifecycle.currentStateFlow.map { it.isAtLeast(Lifecycle.State.STARTED) }.distinctUntilChanged()
+                .collectLatest { started -> if (started) together.keepInSync(tripId) }
+        }
+    }
+    // Deleted (or left) elsewhere while open: the screen closes itself (the Android app's TripScreen).
     LaunchedEffect(trip == null) { if (trip == null) onDeleted() }
     // The trip's countries, from the side it is on (the examples, or the traveller's own).
     val flags = rememberWorld(book, revision, trip?.isDemo == true, today).tripCountries[tripId].orEmpty()
@@ -163,6 +186,8 @@ fun TripPage(
                 trip, flags, today, onBack, onEdit, onDelete = { deleting = true }, menuAtStart, onAddFromLink, onCalendar = { calendarOpen = true },
                 onShare = onShare, onBook = onBook, onClip = onClip, onPostToCommunity = onPostToCommunity,
                 onPost = if (postSheet != null) ({ postOpen = true }) else null,
+                onTogether = if (graph != null) ({ togetherOpen = true }) else null,
+                sharedWith = shared?.members?.count { !it.left }, shared = shared != null,
             )
             AnimatedContent(
                 targetState = tab,
@@ -190,14 +215,28 @@ fun TripPage(
     if (calendarOpen) CalendarSheet(book, tripId, revision, onClose = { calendarOpen = false }, onChanged = onChanged)
     // The trip's community post: update it now (only by hand), open it, stop updating it.
     if (postOpen && postSheet != null) postSheet { postOpen = false }
+    // Deleted (or left): the screen closes itself when the trip goes (above). A shared trip others are in is left.
+    val scope = rememberCoroutineScope()
     if (deleting) DeleteTripDialog(
         onConfirm = {
-            deleting = false
-            removeTripAndFiles(book, files, tripId)
-            onDeleted()
+            val deletions = graph?.deletions
+            if (deletions == null) {
+                deleting = false
+                removeTripAndFiles(book, files, tripId)
+                onDeleted()
+            } else scope.launch {
+                deletions.deleteTrip(tripId)
+                deleting = false
+                onChanged()
+            }
         },
         onDismiss = { deleting = false },
+        leaves = graph?.deletions?.leaves(tripId) == true,
     )
+    // Travel together: invite, who is in, sync now, leave (the Android app's own sheet, read in).
+    if (togetherOpen && graph != null) {
+        com.justdataplease.boringtravel.ui.together.TogetherSheet(graph, tripId, onClose = { togetherOpen = false }, onLeft = { togetherOpen = false })
+    }
 }
 
 /**
@@ -583,6 +622,7 @@ private fun TripHeader(
     trip: Trip, flags: List<String>, today: LocalDate, onBack: () -> Unit, onEdit: () -> Unit, onDelete: () -> Unit, menuAtStart: Boolean,
     onAddFromLink: () -> Unit, onCalendar: () -> Unit, onShare: () -> Unit, onBook: () -> Unit,
     onClip: () -> Unit, onPostToCommunity: () -> Unit, onPost: (() -> Unit)?,
+    onTogether: (() -> Unit)? = null, sharedWith: Int? = null, shared: Boolean = false,
 ) {
     var menuOpen by remember { mutableStateOf(menuAtStart) }
     Row(
@@ -599,6 +639,8 @@ private fun TripHeader(
             }
             Text(Bt.text.display(trip.title), style = Bt.text.h2, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
+        // A shared trip shows who it is shared with; the button opens Travel together (round 26).
+        if (sharedWith != null && onTogether != null) SharedBadge(sharedWith, onTogether)
         // The AI chat is the Plan's Chat button, beside Add (Android 1.22.0: the ✦ left the top bar on every tab).
         Box {
             BtIconButton(BtIcons.More, "Trip options", { menuOpen = true })
@@ -642,10 +684,17 @@ private fun TripHeader(
                     menuOpen = false
                     onCalendar()
                 })
-                // Last, in the danger colour.
+                // Travel together (round 26): invite, who is in, sync, leave.
+                if (onTogether != null) {
+                    DropdownMenuItem(text = { Text("Travel together") }, leadingIcon = { Icon(BtIcons.Me, null) }, onClick = {
+                        menuOpen = false
+                        onTogether()
+                    })
+                }
+                // Owner (Android, 2026-11-11): "also make able to delete trip". Last, in the danger colour; a shared trip is left.
                 val danger = Bt.colors.danger
                 DropdownMenuItem(
-                    text = { Text("Delete trip", color = danger) },
+                    text = { Text(if (shared) "Leave trip" else "Delete trip", color = danger) },
                     leadingIcon = { Icon(BtIcons.Delete, null, tint = danger) },
                     onClick = {
                         menuOpen = false
@@ -654,6 +703,22 @@ private fun TripHeader(
                 )
             }
         }
+    }
+}
+
+/** "Shared" with the number of others, in the trip header (the Android app's SharedBadge). */
+@Composable
+private fun SharedBadge(others: Int, onClick: () -> Unit) {
+    val c = Bt.colors
+    Row(
+        Modifier.clip(androidx.compose.foundation.shape.RoundedCornerShape(50)).background(c.accent.copy(alpha = 0.22f))
+            .clickable(role = Role.Button, onClickLabel = "Travel together", onClick = onClick)
+            .padding(horizontal = 10.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        Icon(BtIcons.Me, null, Modifier.size(16.dp), tint = c.ink)
+        Text(if (others > 0) "+$others" else "Shared", style = Bt.text.label, color = c.ink)
     }
 }
 

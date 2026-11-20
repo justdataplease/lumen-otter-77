@@ -86,8 +86,10 @@ object AppRestore {
     /** What a restore brings back. */
     class Saved(val stack: List<Place>, val tabs: Map<HomeTab, List<Place>>, val tripTab: TripTab?, val tripDay: LocalDate?)
 
-    fun encode(stack: AppStack, tripTab: TripTab, tripDay: LocalDate?, noteIds: Map<Int, String>): String = buildJsonObject {
+    fun encode(stack: AppStack, tripTab: TripTab, tripDay: LocalDate?, noteIds: Map<Int, String>, join: String? = null): String = buildJsonObject {
         put("v", 1)
+        // A shared trip's join link waiting for its sheet (round 26; Android's KEY_JOIN in its saved state).
+        join?.let { put("join", it) }
         put("stack", buildJsonArray { stack.entries.forEach { e -> placeJson(e.place, noteIds[e.id])?.let { add(it) } } })
         put("tabs", buildJsonObject {
             stack.tabPages.forEach { (tab, pages) ->
@@ -119,6 +121,15 @@ object AppRestore {
                 TripTab.of(o["tripTab"]?.jsonPrimitive?.contentOrNull),
                 o["tripDay"]?.jsonPrimitive?.longOrNull?.let(::localDateOfEpochDay),
             )
+        }.getOrNull()
+    }
+
+    /** The join link [text] kept waiting for its sheet, also before Welcome is done; null when there is none. */
+    fun joinOf(text: String?): com.justdataplease.boringtravel.together.ShareLink? {
+        if (text.isNullOrBlank()) return null
+        return runCatching {
+            val o = kotlinx.serialization.json.Json.parseToJsonElement(text).jsonObject
+            com.justdataplease.boringtravel.together.ShareLink.find(o["join"]?.jsonPrimitive?.contentOrNull)
         }.getOrNull()
     }
 

@@ -11,7 +11,7 @@ settings:
     # The Android app's versionName (android-boringtravel/app/build.gradle.kts), which Me › Version shows on both phones
     # (the build writes it into the app: AppVersion); raise it with Android's (VersionTest checks the two agree). CI
     # passes the build number (CURRENT_PROJECT_VERSION) for TestFlight.
-    MARKETING_VERSION: "1.22.0"
+    MARKETING_VERSION: "1.22.1"
     CURRENT_PROJECT_VERSION: "1"
     SWIFT_VERSION: "5.0"
     # The App Group the app and its widgets share (the widgets read the snapshot the app writes there). It has to be
@@ -23,7 +23,8 @@ settings:
     # /.well-known/apple-app-site-association for this app's id first: until the owner puts it on the site, the link
     # opens the website, whose page can send the app's own link (boringtravel://post/#<id>, the URL type below). The
     # App ID needs the Associated Domains capability in the owner's Apple Developer account for a signed build; an
-    # unsigned build (the Simulator's CI) carries no entitlements.
+    # unsigned build (the Simulator's CI) carries no entitlements. Since round 26 the same domain carries Travel together's
+    # join links (https://justdataplease.com/apps/boringtravel/join/#…): the site's file names /apps/boringtravel/join* too.
     ASSOCIATED_DOMAINS: applinks:justdataplease.com
 # The maps: MapLibre Native for iOS, the same map library as the Android app (OpenFreeMap's tiles, no key). Its Swift
 # package is MapLibre's own distribution repository; 7.0.0 (28 Oct 2026) needs iOS 15.5 or later.
@@ -115,6 +116,10 @@ targets:
           # needed): a processing task asked for after each backup or each change of the switches (IosBackupTask in
           # IosGoogle.kt). iOS picks the moment; opening the app after 22:00 runs a missed one too.
           - com.justdataplease.boringtravel.backup.daily
+          # Round 26, Travel together: the shared trips' catch-up every 3 h and the sends a closed app left waiting (Android's
+          # WorkManager jobs "together-sync" and "together-send-<trip>"): an app refresh task (IosTogetherRuns in
+          # IosTogether.kt), best effort, with the `fetch` mode above.
+          - com.justdataplease.boringtravel.together.sync
         # Round 23, Google sign-in and Drive: Google's page opens in ASWebAuthenticationSession, which catches the
         # answer to the iOS client's own address (com.googleusercontent.apps.<id>:/oauth2redirect) itself, so no URL
         # type is added for it. Sign in with Apple uses AuthenticationServices' own sheet (entitlement below).
@@ -135,7 +140,8 @@ targets:
           - whatsapp
         # The widgets' buttons and the quick actions open the app at their action (boringtravel://write, camera, voice,
         # today, new_trip). Since round 24 also a community post (boringtravel://post/#<id>), the website's way into the
-        # app while the post links aren't universal links yet.
+        # app while the post links aren't universal links yet; since round 26 a shared trip's join link
+        # (boringtravel://join#…, Android's own scheme link), everything after "#" handed to Kotlin whole.
         CFBundleURLTypes:
           - CFBundleURLName: com.justdataplease.boringtravel
             CFBundleURLSchemes:

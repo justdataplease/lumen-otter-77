@@ -126,6 +126,15 @@ final class BoringTravelTour: XCTestCase {
         // Back on Trips: the new trip as a ticket with its countdown.
         guard tap("Back", in: app), shows("Trip ideas", in: app) else { return }
         snap("09-trips")
+        // Round 26: Trips' last row, "Join a friend's trip", opens "Join a trip" (Android's dialog); Cancel closes it.
+        // Nothing is pasted, so nothing is read. The row is below the fold: the page is swiped to it ([scrollTap]).
+        if scrollTap("Join a friend's trip", prefix: true, in: app), shows("Paste the link or the whole message", in: app, wait: 10) {
+            snap("09b-join-a-trip")
+            _ = tap("Cancel", in: app)
+            gone("Paste the link or the whole message", in: app, wait: 5)
+        }
+        // Back to the page's top, where the bar's tabs are tapped from.
+        for _ in 0..<6 { app.swipeDown() }
 
         // The Map tab opens on the globe (as on Android); Places I've been from its chip.
         if tap("Map", in: app), shows("Places I've been", in: app) {
@@ -144,9 +153,18 @@ final class BoringTravelTour: XCTestCase {
         // tapped whatever the page showed, so Me is on its first page again.
         // Me's rows sit below the Account card and the theme pickers, off screen (Mac run of 19 Nov 2026, round 24: 02-me
         // ended at Voice notes), so the page is swiped to the row first ([scrollTap]).
-        if tap("Me", in: app), scrollTap("Backup & sync", in: app) {
-            if shows("Last backup", in: app) { snap("11-backup") }
-            _ = tap("Back", in: app)
+        // Round 25's Mac run (44624529305) never found the row by its exact name: like Route tracking's, its label carries
+        // its subtitle too ("Backup & sync" over "Off"), so the first that starts so is tapped. Still not found: the screen
+        // goes into the log, to read the row's real label.
+        if tap("Me", in: app) {
+            if scrollTap("Backup & sync", prefix: true, in: app) {
+                if shows("Last backup", in: app) { snap("11-backup") }
+                _ = tap("Back", in: app)
+            } else {
+                print("TOUR-SCREEN-BEGIN")
+                print(app.debugDescription)
+                print("TOUR-SCREEN-END")
+            }
         }
 
         // The trip's ⋮ › Share: its pages made by WebKit and previewed, then back.
@@ -202,6 +220,15 @@ final class BoringTravelTour: XCTestCase {
                 gone("Trip options", in: app, wait: 5)
                 snap("14b-post-to-community")
                 _ = tap("Back", in: app)
+            }
+            // Round 26: the trip's ⋮ › Travel together, a trip not shared yet: what it does, the Drive note and "Connect
+            // Drive and invite" (never tapped: it would open Google's page). The sheet's title is at its top; a tap on the
+            // dimmed page above it closes it (as on Android), and the picture waits for the menu to go.
+            if tap("Trip options", in: app), tap("Travel together", in: app), shows("Plan and write this trip with friends", in: app, wait: 10) {
+                gone("Make a clip", in: app, wait: 5)
+                snap("14c-travel-together")
+                app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.06)).tap()
+                gone("Plan and write this trip with friends", in: app, wait: 5)
             }
         }
 

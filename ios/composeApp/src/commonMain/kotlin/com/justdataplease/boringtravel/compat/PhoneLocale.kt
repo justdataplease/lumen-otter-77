@@ -31,6 +31,22 @@ internal expect fun platformDate(pattern: String, epochDay: Long, minuteOfDay: I
  */
 expect fun skeletonDate(skeleton: String, epochDay: Long, tag: String = phoneLanguageTag()): String
 
+/** The units Android's DateUtils.getRelativeTimeSpanString counts in, to the minute. */
+enum class RelativeUnit { MINUTES, HOURS, DAYS }
+
+/**
+ * "[count] [unit] ago" in language [tag], long style, as Android's DateUtils.getRelativeTimeSpanString writes it through
+ * ICU's RelativeDateTimeFormatter ("5 minutes ago", "πριν από 5 λεπτά"). iPhone: NSRelativeDateTimeFormatter, full units,
+ * numeric (CLDR's words, as ICU's); the desktop: CLDR's English and Greek, English for the rest (pictures and tests).
+ */
+expect fun relativeAgo(count: Long, unit: RelativeUnit, tag: String = phoneLanguageTag()): String
+
+/**
+ * "yesterday" ([daysAgo] 1) or "today" (0) in language [tag], as DateUtils names them (ICU's absolute day, here before
+ * Android's capital for the start of a sentence). iPhone: NSRelativeDateTimeFormatter, named.
+ */
+expect fun relativeDay(daysAgo: Int, tag: String = phoneLanguageTag()): String
+
 /** The separators, zero digit and group size Java's Formatter writes numbers with in language [tag]. */
 internal expect fun platformNumberSymbols(tag: String): JavaNumberSymbols
 

@@ -92,6 +92,25 @@ object IosApp {
         ).also { c -> google.onSignedOut = { c.signOut() } }
     }
 
+    /**
+     * Travel together (round 26): the shared trips on the run's store, the account's Drive and the build's Drive API key
+     * (other members' copies by link), the trip mailboxes in the community's Firestore, the sends kept in the settings
+     * and the background turn through BGTaskScheduler ([IosTogetherRuns]); the store read and written on the main thread,
+     * where the screens write it. Backups carry its state, and Delete account takes its mailbox entries out first.
+     */
+    val together: com.justdataplease.boringtravel.together.Together by lazy {
+        com.justdataplease.boringtravel.together.Together(
+            core.book, core.settings, files, google.drive,
+            com.justdataplease.boringtravel.google.PublicDrive(web.net, com.justdataplease.boringtravel.google.AccountIds.DRIVE_API_KEY, NSBundle.mainBundle.bundleIdentifier),
+            MainScope(), PhotoPrep(files, IosVideoFrames(files)), web.net,
+            bookContext = kotlinx.coroutines.Dispatchers.Main, runs = IosTogetherRuns, background = IosBackgroundWork(), keep = settingsFile,
+            driveAccount = { google.driveAccount }, mailbox = { community.mailAccess() },
+        ).also { t ->
+            backups.sharing = t.backupState()
+            community.beforeDelete = { t.forgetMail() }
+        }
+    }
+
     /** The Live Activity's Swift side (RecordingActivityBridge), handed over at the start. */
     internal var recordingActivity: NativeRecordingActivity? = null
 
@@ -117,6 +136,8 @@ fun startBoringTravel(widget: NativeWidget?, recording: NativeRecordingActivity?
         work = { if (IosApp.tour) DailyResult.Skipped else IosApp.driveBackups.daily(lowPowerMode()) },
         next = { IosApp.driveBackups.reschedule() },
     )
+    // Travel together's background turn (round 26): the sends left waiting, then the shared trips' catch-up every 3 h.
+    IosTogetherRuns.register { if (!IosApp.tour) IosApp.together.backgroundTurn(lowPowerMode()) }
     // Route tracking's first decision once the app has finished starting: SwiftUI makes the App before UIApplication's
     // own start, and the decision asks whether the app is on screen. A location event that started the app in the
     // background is handed over once the significant-change service is asked again (Apple's rule), which this does.

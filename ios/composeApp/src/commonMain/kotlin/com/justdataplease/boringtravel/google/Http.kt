@@ -50,5 +50,11 @@ fun Throwable.readable(fallback: String): String = when (this) {
         NetFailure.Timeout -> "Google didn't answer in time. Try again."
         NetFailure.Insecure -> "Couldn't connect securely to Google. Check the network and try again."
     }
+    // Java's own network failures by name, as Android sorts them (round 26: Android's TogetherEngineTest throws them).
+    is com.justdataplease.boringtravel.compat.UnknownHostException, is com.justdataplease.boringtravel.compat.ConnectException,
+    is com.justdataplease.boringtravel.compat.NoRouteToHostException -> "No internet connection. Check it and try again."
+    is com.justdataplease.boringtravel.compat.SocketTimeoutException, is com.justdataplease.boringtravel.compat.InterruptedIOException ->
+        "Google didn't answer in time. Try again."
+    is com.justdataplease.boringtravel.compat.SSLException -> "Couldn't connect securely to Google. Check the network and try again."
     else -> message?.takeIf { it.isNotBlank() } ?: fallback
 }

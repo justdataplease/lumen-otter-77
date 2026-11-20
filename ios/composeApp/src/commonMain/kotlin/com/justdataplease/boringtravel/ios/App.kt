@@ -96,6 +96,7 @@ fun App(
     backups: BackupFiles? = null,
     driveBackups: DriveBackups? = null,
     community: com.justdataplease.boringtravel.community.Community? = null,
+    together: com.justdataplease.boringtravel.together.Together? = null,
 ) {
     var ready by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) {
@@ -115,6 +116,7 @@ fun App(
         book, settings, version = version, media = media, followsClock = true, web = network, calendar = calendar, ai = ai,
         tracking = phone?.tracking, processor = phone?.processor, widget = phone?.widget, links = phone?.links,
         restored = restored, keep = keep, google = google, backups = backups, driveBackups = driveBackups, community = community,
+        together = together, writes = core.writes,
     )
 }
 
@@ -125,7 +127,19 @@ fun App(
  * Google Maps link is kept apart from its website, as on Android (LinkPlaces.sortLinks).
  */
 class AppCore(file: TripFile, settingsFile: SettingsFile) {
-    val book: TripBook = runCatching { TripBook(file, links = LinkPlaces::sortLinks) }.getOrElse { TripBook(MemoryTripFile(), links = LinkPlaces::sortLinks) }
+    /** Goes up after every write to the trips' store, from any screen or task (round 26: a shared trip's change is sent). */
+    val writes = kotlinx.coroutines.flow.MutableStateFlow(0)
+    private val watched = object : TripFile {
+        override fun read(): String? = file.read()
+        override fun write(text: String) {
+            file.write(text)
+            writes.value++
+        }
+    }
+
+    /** Rows are stamped on Google's clock once a Drive answer told it (Stamps, Android's rule since shared trips). */
+    val book: TripBook = runCatching { TripBook(watched, now = { com.justdataplease.boringtravel.data.repo.Stamps.now() }, links = LinkPlaces::sortLinks) }
+        .getOrElse { TripBook(MemoryTripFile(), links = LinkPlaces::sortLinks) }
     val settings: AppSettings = AppSettings(settingsFile)
 }
 
@@ -283,6 +297,10 @@ fun BoringTravelApp(
     backups: BackupFiles? = null,
     driveBackups: DriveBackups? = null,
     community: com.justdataplease.boringtravel.community.Community? = null,
+    /** Travel together (round 26): the phone's (iPhone: IosApp's), else one made here on [google] and the community. */
+    together: com.justdataplease.boringtravel.together.Together? = null,
+    /** Goes up after every write to the trips' store (AppCore's); null: the screens' own count of changes stands in. */
+    writes: kotlinx.coroutines.flow.Flow<Int>? = null,
 ) {
     val rows = remember(book) { { id: String -> book.media(id) } }
     val appScope = rememberCoroutineScope()
@@ -323,6 +341,18 @@ fun BoringTravelApp(
     val planner = remember(book, settings, web, media, ai, version) { PlannerKit(book, settings, web, media.files, ai, version) }
     // The trip videos made on this phone, for each trip's Media tab (round 20).
     val savedClips = remember(media) { com.justdataplease.boringtravel.data.SavedClips(media.files) }
+    // Travel together (round 26): the phone's, else one here on the account given (previews, tests: memory and fakes),
+    // its trip mailboxes the community's. Delete account takes this phone's mailbox entries out first (Android's order).
+    val togetherHere = together ?: remember(book, settings, media, web, google, communityHere, appScope) {
+        com.justdataplease.boringtravel.together.Together(
+            book, settings, media.files, google?.drive,
+            com.justdataplease.boringtravel.google.PublicDrive(web.net, "", null), appScope, PhotoPrep(media.files, media.frames), web.net,
+            mailbox = { communityHere.mailAccess() },
+        )
+    }
+    remember(communityHere, togetherHere) { communityHere.beforeDelete = { togetherHere.forgetMail() } }
+    // Backups carry the shared trips' state and a restore brings the memberships back (Android's sharedTrips).
+    remember(backupFiles, togetherHere) { backupFiles.sharing = togetherHere.backupState() }
     CompositionLocalProvider(
         LocalMediaKit provides media, LocalMediaRows provides rows, LocalWeb provides web, LocalAppScope provides appScope,
         LocalTrackProcessor provides tracks, LocalWorld provides world, LocalCalendar provides calendarSync,
@@ -332,8 +362,9 @@ fun BoringTravelApp(
         com.justdataplease.boringtravel.community.LocalCommunity provides communityHere,
         // The phone's language and region for what the Android screens write with them (Android's LocalConfiguration).
         LocalConfiguration provides remember { Configuration(LocaleList(listOf(Locale.getDefault()))) },
+        LocalTogether provides togetherHere,
     ) {
-        AppFrame(book, settings, today, frame, startAt, version, media, followsClock, siteCopy, widget, restored, keep)
+        AppFrame(book, settings, today, frame, startAt, version, media, followsClock, siteCopy, widget, restored, keep, writes)
     }
 }
 
@@ -348,6 +379,7 @@ object DemoNotice {
 private fun AppFrame(
     book: TripBook, settings: AppSettings, today: LocalDate, frame: PaddingValues, startAt: List<Place>, version: String, media: MediaKit,
     followsClock: Boolean, siteCopy: SiteCopySetup, widget: HomeWidget?, restored: String?, keep: ((String) -> Unit)?,
+    writes: kotlinx.coroutines.flow.Flow<Int>? = null,
 ) {
     // Where the phone closed the app in the background, when it did (a start with screens asked for is a preview's).
     val kept = remember { if (settings.onboardingDone && startAt.isEmpty()) AppRestore.decode(restored, book) else null }
@@ -363,6 +395,10 @@ private fun AppFrame(
     var tripDay by remember { mutableStateOf(kept?.tripDay) }
     // The note each Write on the stack is writing, by its entry's id: a restore reopens that note (Android's KEY_ID).
     val noteIds = remember { mutableStateMapOf<Int, String>() }
+    // A shared trip's join link (round 26) waiting for its sheet: opened from outside (kept with the window, so it survives
+    // the app being stopped, and waiting for Welcome, as Android's pendingJoin), or pasted on Trips (Android's typedJoin).
+    var pendingJoin by remember { mutableStateOf(AppRestore.joinOf(restored)) }
+    var typedJoin by remember { mutableStateOf<com.justdataplease.boringtravel.together.ShareLink?>(null) }
     // The book isn't observable: a screen says when it changed something, and what is on screen is read again.
     var revision by remember { mutableIntStateOf(0) }
     val changed: () -> Unit = { revision++ }
@@ -650,6 +686,11 @@ private fun AppFrame(
     LaunchedEffect(pendingLink) {
         val action = pendingLink ?: return@LaunchedEffect
         links.take()
+        // A shared trip's join link (round 26): its sheet waits for Welcome, as on Android (post links before it are dropped).
+        Deeplink.joinOf(action)?.let { link ->
+            com.justdataplease.boringtravel.together.ShareLink.find(link)?.let { pendingJoin = it }
+            return@LaunchedEffect
+        }
         if (!settings.onboardingDone) return@LaunchedEffect
         // A community post's link (a universal link, or boringtravel://post/#<id>): the post opens (Android's AppNav).
         Deeplink.postOf(action)?.let { postId ->
@@ -695,6 +736,43 @@ private fun AppFrame(
     )
     LifecycleEventEffect(Lifecycle.Event.ON_START) { community?.let { c -> scope.launch { c.flush() } } }
 
+    // Travel together (round 26): the shared trips sync and send as on Android (together/Together.kt); their sheets are
+    // Android's own (ui/together, read in) on this app's AppGraph (ios/TogetherNav.kt).
+    val together = LocalTogether.current
+    remember(together, scope) { together?.onRowsChanged = { scope.launch { changed() } } }
+    LaunchedEffect(together) {
+        val t = together ?: return@LaunchedEffect
+        // Each change to a shared trip from now on queues its send; sends a closed app left go now.
+        t.start(writes ?: androidx.compose.runtime.snapshotFlow { revision })
+        // Shared trips catch up with the other members whenever the app opens (Android's MainActivity: syncAll).
+        if (followsClock) t.syncAll()
+    }
+    // Back on screen, a send waiting after a failure goes at once; away, the sends still waiting ask for time.
+    LifecycleEventEffect(Lifecycle.Event.ON_START) { together?.cameBack() }
+    LifecycleEventEffect(Lifecycle.Event.ON_STOP) { together?.wentAway() }
+    // Someone joined a shared trip by its link: they are added without a tap here, so say who (Android's AppNav).
+    LaunchedEffect(together) {
+        together?.joined?.collect { j ->
+            val title = book.snapshot.trips.firstOrNull { it.id == j.tripId }?.title.orEmpty()
+            say(com.justdataplease.boringtravel.ui.together.TogetherText.joined(j.names, title))
+        }
+    }
+    val deletions = remember(book, media, together, calendarSync) {
+        TripDeletions(book, media.files, together, calendarGone = { calendarSync?.removeDeleted(it) }, tripGone = ::tripDeleted, changed = changed)
+    }
+    val togetherGraph = remember(together, settings, book, google, deletions) {
+        together?.let {
+            TogetherGraph(
+                it, TogetherSettings(settings), TogetherTrips(book) { revision }, deletions,
+                TogetherDemo { on ->
+                    demo.set(on, today)
+                    changed()
+                },
+                scope, google,
+            )
+        }
+    }
+
     val actions = Actions(
         changed = changed, back = ::back, open = ::open,
         openTrip = { id, day -> openTrip(id, day = day) }, closeTrip = ::closeTrip,
@@ -720,6 +798,9 @@ private fun AppFrame(
         communityActions = communityActions,
         // New trip's "Start from a community trip": the Community tab (Android's actions.tab(CommunityHome)).
         toCommunity = { showTab(HomeTab.Community) },
+        // Trips' "Join a friend's trip": the pasted link opens the Join sheet (Android's AppActions.join).
+        join = { typedJoin = it },
+        together = together,
     )
 
     // The status bar's icons on the theme's page (Android's MainActivity.SystemBars): light on Trail, dark on the four
@@ -731,7 +812,7 @@ private fun AppFrame(
 
     // Where the app is, for the phone to keep with its window (iPhone: SwiftUI's scene storage), after every change.
     if (keep != null) {
-        val text by remember { derivedStateOf { AppRestore.encode(stack, tripTab, tripDay, noteIds) } }
+        val text by remember { derivedStateOf { AppRestore.encode(stack, tripTab, tripDay, noteIds, pendingJoin?.url) } }
         LaunchedEffect(text) { keep(text) }
     }
 
@@ -743,6 +824,7 @@ private fun AppFrame(
     }
     CompositionLocalProvider(
         LocalSiteImport provides siteImport, LocalSay provides ::say, com.justdataplease.boringtravel.compat.LocalContext provides screenContext,
+        LocalTogetherGraph provides togetherGraph,
     ) { BoringTravelTheme(settings.look, settings.fontSet, settings.textFont) {
         val where = where()
         val bar = TripNav.bar(where)
@@ -782,6 +864,24 @@ private fun AppFrame(
                         }
                     }
                     BtSnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter))
+                    // A shared trip's link (round 26): join it, or add the friend who sent theirs back; it waits for
+                    // Welcome (Android's AppNav: shareReady).
+                    val join = pendingJoin ?: typedJoin
+                    if (join != null && togetherGraph != null && stack.last.place != Place.Welcome) {
+                        com.justdataplease.boringtravel.ui.together.JoinSheet(
+                            togetherGraph, join,
+                            onOpenTrip = { tripId ->
+                                pendingJoin = null
+                                typedJoin = null
+                                changed()
+                                openTrip(tripId)
+                            },
+                            onClose = {
+                                pendingJoin = null
+                                typedJoin = null
+                            },
+                        )
+                    }
                     backupFiles?.progress?.let { p ->
                         if (stack.last.place != Place.Backup) {
                             ProgressLine(p, Modifier.align(Alignment.TopCenter).fillMaxWidth().background(Bt.colors.surface).padding(horizontal = 20.dp, vertical = 8.dp))
@@ -839,6 +939,10 @@ private class Actions(
     val communityActions: CommunityActions? = null,
     /** The Community tab, as the bar switches to it. */
     val toCommunity: () -> Unit = {},
+    /** A friend's trip link pasted on Trips: the Join sheet (round 26). */
+    val join: (com.justdataplease.boringtravel.together.ShareLink) -> Unit = {},
+    /** The shared trips (round 26): a trip left here isn't deleted with its route and files. */
+    val together: com.justdataplease.boringtravel.together.Together? = null,
 ) {
     /** Where the globe and Your world go, and how they say the trips changed. */
     val world = WorldNav(
@@ -898,6 +1002,7 @@ private fun Screen(
                 onDictate = a.dictateInTrip,
                 onOpenBackup = { a.open(Place.Backup) },
                 onRestored = a.changed,
+                onJoin = a.join,
             )
             HomeTab.Calendar -> TripsCalendarScreen(
                 book, today, revision,
@@ -959,7 +1064,8 @@ private fun Screen(
             onOpenNote = { a.open(Place.Note(place.tripId, it)) },
             onWrite = { a.open(Place.Write(place.tripId)) },
             onDeleted = {
-                a.tripDeleted(place.tripId)
+                // A shared trip left here keeps its route and files for joining again (its calendar events went already).
+                if (a.together?.isLeft(place.tripId) != true) a.tripDeleted(place.tripId)
                 a.changed()
                 a.closeTrip()
             },
@@ -1055,7 +1161,7 @@ private fun Screen(
                 a.back()
             },
             onDeleted = {
-                a.tripDeleted(place.tripId)
+                if (a.together?.isLeft(place.tripId) != true) a.tripDeleted(place.tripId)
                 a.changed()
                 a.closeTrip()
             },

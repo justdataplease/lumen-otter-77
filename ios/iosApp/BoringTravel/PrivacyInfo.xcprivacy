@@ -85,6 +85,12 @@
 				<string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string>
 			</array>
 		</dict>
+		<!-- Round 26, Travel together (Android's), adds no new type: each member's copy of a shared trip (its plan, notes,
+		     photos at 1600 px and videos) stays in that member's own Google Drive, link-shared, read by the other members'
+		     phones with the app's Drive API key; the owner's server never keeps it. The trip mailboxes in the owner's
+		     Firestore keep, per member, the Firebase user id, a random member id and the Drive file id of their copy (User
+		     ID and Other User Content above), linked to the person, for the shared trip only, never for tracking; leaving
+		     a trip and Delete account take them out. -->
 	</array>
 	<key>NSPrivacyAccessedAPITypes</key>
 	<array>

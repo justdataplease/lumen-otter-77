@@ -130,9 +130,9 @@ class PostingSmokeTest {
 
     @Test fun theSheetsLastUpdatedLine() {
         val now = 1_795_000_000_000L
-        assertEquals("5 minutes ago", relative(now - 5 * 60_000L, now))
-        assertEquals("1 minute ago", relative(now - 60_000L, now))
-        assertEquals("3 hours ago", relative(now - 3 * 3_600_000L, now))
+        assertEquals("5 minutes ago", relative(now - 5 * 60_000L, now, "en-US"))
+        assertEquals("1 minute ago", relative(now - 60_000L, now, "en-US"))
+        assertEquals("3 hours ago", relative(now - 3 * 3_600_000L, now, "en-US"))
         assertEquals("Nov 12, 2026", skeletonDate("yMMMd", localDate(2026, 11, 12).toEpochDay(), "en-US"))
         assertEquals("12 Nov 2026", skeletonDate("yMMMd", localDate(2026, 11, 12).toEpochDay(), "en-GB"))
     }

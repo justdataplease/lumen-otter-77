@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
@@ -193,7 +194,12 @@ fun MediaImage(
         if (media != null) {
             val pictures = LocalMediaKit.current.pictures
             val px = with(LocalDensity.current) { max(maxWidth.toPx(), maxHeight.toPx()).let { if (it.isFinite()) it.roundToInt() else 1280 } }
-            val picture by produceState(pictures.cached(media, px), media.localPath, px) { if (value == null) value = pictures.load(media, px) }
+            // A photo from a shared trip may arrive after its tile is shown (the row comes first): its tile loads again
+            // then (round 26, Android's photosVersion).
+            val fetched = media.sharedFileId != null && (media.authorId != null || media.sha256 == null)
+            val together = LocalTogether.current
+            val arrivals = if (fetched && together != null) together.photosVersion.collectAsState().value else 0
+            val picture by produceState(pictures.cached(media, px), media.localPath, px, arrivals) { if (value == null) value = pictures.load(media, px) }
             picture?.let { Image(it, null, Modifier.matchParentSize(), contentScale = contentScale) }
             if (playBadge && media.isVideo) VideoBadge(Modifier.matchParentSize())
         }

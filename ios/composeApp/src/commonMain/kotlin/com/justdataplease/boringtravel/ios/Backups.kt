@@ -38,6 +38,13 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlin.coroutines.CoroutineContext
 
+/** Travel together's part of a backup (round 26): the engine's exportState, importState and the trips shared now. */
+interface SharedTripsState {
+    suspend fun export(): String?
+    suspend fun import(json: String)
+    fun sharedNow(): Set<String>
+}
+
 /**
  * Backup files on this phone, as the Android app's BackupManager makes and restores them (its runSaveFile,
  * runRestoreFile, mergeIn, keepForUndo, undoRestore): Me › Backup & sync › Save a file and Restore a file, without
@@ -75,6 +82,16 @@ class BackupFiles(
 
     /** Runs after a restore put the phone back (the daily backup is planned again: Android's reschedule). */
     var onRestored: suspend () -> Unit = {}
+
+    /**
+     * Travel together's state (round 26; Android's AppGraph hands its BackupManager the same three): what a backup
+     * carries of the shared trips, what a restore brings back (memberships, so a new phone keeps syncing them), and the
+     * trips shared now, which a restore never rolls back. Null: the last restore's text goes on as it was.
+     */
+    var sharing: SharedTripsState? = null
+
+    /** The shared trips' state as a backup's `sharedTrips` (null when none is or was shared here). */
+    internal suspend fun sharedTrips(): String? = sharing?.let { it.export() } ?: book.sharedTrips
 
     /** The phone as it was before the last restore (when, and what it held); null when there is nothing to undo. */
     var undo by mutableStateOf<BackupManifest?>(null)
@@ -145,7 +162,7 @@ class BackupFiles(
         val clips = com.justdataplease.boringtravel.data.SavedClipIndex.list(files).filter { it.tripId in trips }
         val clipRows = clips.map { com.justdataplease.boringtravel.backup.ClipRow(it.id, it.tripId, it.title, it.createdAt, it.durationMs, it.width, it.height) }
         val data = snapshot.toData(settings.backupPreferences()).copy(
-            sharedTrips = book.sharedTrips,
+            sharedTrips = sharedTrips(),
             // The clips on this phone, and those a restore listed whose videos aren't here (kept for the other phone).
             savedClips = (clipRows + book.savedClips.orEmpty().filter { r -> clipRows.none { it.id == r.id } }).takeIf { it.isNotEmpty() } ?: book.savedClips,
             clipEdits = (book.clipEdits.orEmpty() + com.justdataplease.boringtravel.backup.BackupExtras.clipEdits(files, trips)).takeIf { it.isNotEmpty() },
@@ -218,9 +235,10 @@ class BackupFiles(
      */
     internal suspend fun mergeIn(data: BackupData, incoming: Snapshot): MergePlan {
         val prefs = settings.backupPreferences()
-        val sharing = book.sharedTrips
+        val sharing = sharedTrips()
         val local = book.snapshot
-        val plan = BackupMerge.replace(local, incoming)
+        // The trips shared now only gain (they belong to everyone in them: Android's sharedNow).
+        val plan = BackupMerge.replace(local, incoming, this.sharing?.sharedNow().orEmpty())
         val staged = "$UNDO.part"
         files.delete(staged)
         try {
@@ -243,6 +261,8 @@ class BackupFiles(
             settings.restorePreferences(data.preferences, replace = true)
             // A backup was restored here: the question about restoring is answered.
             settings.restoreAsked = true
+            // Its shared trips come back (round 26): this phone carries on as the member it was in each.
+            data.sharedTrips?.let { json -> runCatching { this.sharing?.import(json) } }
             // The restored trips are the traveller's own: show them, not the demo.
             settings.demoMode = false
             onRestored()

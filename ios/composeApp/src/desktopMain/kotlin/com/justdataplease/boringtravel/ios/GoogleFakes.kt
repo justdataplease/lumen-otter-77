@@ -24,8 +24,11 @@ import kotlin.io.encoding.ExperimentalEncodingApi
  * Addresses are made up (example.com), tokens are counters.
  */
 
-/** An account on the fake Google: [email] and [name] (made up). */
-data class FakeAccount(val email: String = "traveller@example.com", val name: String? = "Traveller")
+/**
+ * An account on the fake Google: [email] and [name] (made up); [sub] is its Google id (round 26: two travellers on two
+ * phones are two accounts, two Firebase users).
+ */
+data class FakeAccount(val email: String = "traveller@example.com", val name: String? = "Traveller", val sub: String = "sub-1")
 
 /** A file or folder in the fake Drive. */
 class FakeDriveItem(
@@ -67,6 +70,10 @@ class FakeGoogleCloud(
     var account: FakeAccount = FakeAccount(),
     var connected: Boolean = true,
     var metered: Boolean = false,
+    /** Cloud Firestore (round 24): the community's documents; one shared by every phone of a test (round 26's mailboxes). */
+    val firestore: FakeFirestore = FakeFirestore(),
+    /** How this Drive's ids start (round 26: each traveller's Drive its own, as Google's ids never meet). */
+    private val idPrefix: String = "drv",
 ) : Net {
     private val json = Json { ignoreUnknownKeys = true }
     private var n = 0
@@ -96,11 +103,17 @@ class FakeGoogleCloud(
     val firebaseIdTokens = HashMap<String, String>()
     private val firebaseRefresh = HashMap<String, String>()
 
-    /** Cloud Firestore (round 24): the community's documents, read and written by the signed-in account. */
-    val firestore = FakeFirestore()
-
     /** Files shared by link in someone's Drive (a community post's pictures and clips), by id. */
     val publicFiles = LinkedHashMap<String, ByteArray>()
+
+    /**
+     * Other people's Drives (round 26: the other members of a shared trip, each phone with its own cloud): their files
+     * shared by link ("anyone with the link", the file or its folder) are read here by link, as Google serves them.
+     */
+    val others = mutableListOf<FakeGoogleCloud>()
+
+    /** How many link reads of each file's content there were (checksums don't count): an unchanged copy isn't read again. */
+    val linkReads = LinkedHashMap<String, Int>()
 
     /** A Firebase account's ID token, as Firebase gives one (tests use it to reach Firestore as that account). */
     fun firebaseToken(uid: String): String = "fb-id-${++n}".also { firebaseIdTokens[it] = uid }
@@ -128,6 +141,8 @@ class FakeGoogleCloud(
             // A link-shared file read with the app's API key (a community post's picture or clip), else Drive with a token.
             "www.googleapis.com" -> when {
                 c.q("key") != null && c.q("alt") == "media" && c.path.startsWith("/drive/v3/files/") -> shared(c, c.path.removePrefix("/drive/v3/files/"))
+                // A link-shared file's MD5 by the app's API key (round 26: another member's copy, unchanged or not).
+                c.q("key") != null && c.q("fields") == "md5Checksum" && c.path.startsWith("/drive/v3/files/") -> checksum(c, c.path.removePrefix("/drive/v3/files/"))
                 !authorized(c) -> answer(c, 401, """{"error":{"code":401,"message":"Invalid Credentials"}}""")
                 else -> drive(c)
             }
@@ -144,10 +159,24 @@ class FakeGoogleCloud(
      * ([publicFiles]), or a file in this Drive whose folder (or itself) anyone with the link may view (a post made here).
      */
     private fun shared(c: FakeCall, id: String): NetAnswer {
-        val bytes = publicFiles[id] ?: items[id]?.takeIf { f -> !f.trashed && (f.anyone || f.parents.any { items[it]?.anyone == true }) }?.content
-            ?: return answer(c, 404, """{"error":{"code":404,"message":"File not found: $id."}}""")
+        val bytes = byLink(id) ?: return answer(c, 404, """{"error":{"code":404,"message":"File not found: $id."}}""")
+        linkReads[id] = (linkReads[id] ?: 0) + 1
         val type = if (bytes.size > 8 && bytes[4] == 'f'.code.toByte() && bytes[5] == 't'.code.toByte()) "video/mp4" else "image/jpeg"
         return NetAnswer(200, c.url, mapOf("Content-Type" to type), bytes)
+    }
+
+    /** A file anyone with its link may read: posted ones, this Drive's shared ones, then the other people's Drives'. */
+    private fun byLink(id: String): ByteArray? =
+        publicFiles[id] ?: ownByLink(id) ?: others.firstNotNullOfOrNull { it.ownByLink(id) }
+
+    private fun ownByLink(id: String): ByteArray? =
+        items[id]?.takeIf { f -> !f.trashed && (f.anyone || f.parents.any { items[it]?.anyone == true }) }?.content
+
+    /** Drive's md5Checksum of a link-shared file, or Drive's 404 when it isn't readable by link. */
+    private fun checksum(c: FakeCall, id: String): NetAnswer {
+        val bytes = byLink(id) ?: return answer(c, 404, """{"error":{"code":404,"message":"File not found: $id."}}""")
+        val md5 = java.security.MessageDigest.getInstance("MD5").digest(bytes).joinToString("") { "%02x".format(it) }
+        return answer(c, 200, """{"md5Checksum":"$md5"}""")
     }
 
     // ------------------------------------------------------------------ OAuth
@@ -192,7 +221,7 @@ class FakeGoogleCloud(
                         put("refresh_token", refreshToken)
                         put("scope", scopes.joinToString(" "))
                         put("token_type", "Bearer")
-                        if ("openid" in scopes) put("id_token", jwt(buildJsonObject { put("email", who.email); who.name?.let { put("name", it) }; put("sub", "sub-1") }))
+                        if ("openid" in scopes) put("id_token", jwt(buildJsonObject { put("email", who.email); who.name?.let { put("name", it) }; put("sub", who.sub) }))
                     }.toString())
                 }
                 "refresh_token" -> {
@@ -205,7 +234,7 @@ class FakeGoogleCloud(
                         put("expires_in", 3599)
                         put("scope", scopes.joinToString(" "))
                         // A grant with openid gives a fresh ID token on each refresh, as Google's does.
-                        if ("openid" in scopes) put("id_token", jwt(buildJsonObject { put("email", account.email); account.name?.let { put("name", it) }; put("sub", "sub-1") }))
+                        if ("openid" in scopes) put("id_token", jwt(buildJsonObject { put("email", account.email); account.name?.let { put("name", it) }; put("sub", account.sub) }))
                     }.toString())
                 }
                 else -> answer(c, 400, """{"error":"unsupported_grant_type"}""")
@@ -220,7 +249,7 @@ class FakeGoogleCloud(
 
     // ------------------------------------------------------------------ Drive
 
-    private fun newId(): String = "drv" + (++n).toString().padStart(5, '0')
+    private fun newId(): String = idPrefix + (++n).toString().padStart(5, '0')
 
     private fun time(i: Int): String = "2026-11-19T10:${(i / 60 % 60).toString().padStart(2, '0')}:${(i % 60).toString().padStart(2, '0')}.000Z"
 
@@ -281,6 +310,7 @@ class FakeGoogleCloud(
             }
             c.method == "POST" && path == "/drive/v3/files" -> {
                 val meta = json.parseToJsonElement(c.text).jsonObject
+                goneParent(meta)?.let { return answer(c, 404, """{"error":{"code":404,"message":"File not found: $it."}}""") }
                 val f = add(meta, ByteArray(0), (meta["mimeType"] as? JsonPrimitive)?.content ?: FakeDriveItem.FOLDER)
                 answer(c, 200, """{"id":"${f.id}"}""")
             }
@@ -308,10 +338,12 @@ class FakeGoogleCloud(
                 val boundary = c.contentType?.substringAfter("boundary=", "")?.trim('"') ?: return answer(c, 400, "{}")
                 val (meta, media) = multipart(c.body, boundary)
                 val metaJson = json.parseToJsonElement(meta.decodeToString()).jsonObject
+                goneParent(metaJson)?.let { return answer(c, 404, """{"error":{"code":404,"message":"File not found: $it."}}""") }
                 val f = add(metaJson, media.second, media.first)
                 answer(c, 200, fileJson(f).toString())
             }
             path == "/upload/drive/v3/files" && c.q("uploadType") == "resumable" && c.method == "POST" -> {
+                goneParent(json.parseToJsonElement(c.text).jsonObject)?.let { return answer(c, 404, """{"error":{"code":404,"message":"File not found: $it."}}""") }
                 val sid = "s${++n}"
                 sessions[sid] = Session(json.parseToJsonElement(c.text).jsonObject, c.header("X-Upload-Content-Type").orEmpty(), c.header("X-Upload-Content-Length")?.toLong() ?: 0)
                 NetAnswer(200, c.url, mapOf("Location" to "https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&upload_id=$sid"))
@@ -335,6 +367,13 @@ class FakeGoogleCloud(
             else -> answer(c, 400, """{"error":{"message":"The fake has no ${c.method} $path"}}""")
         }
     }
+
+    /**
+     * A folder [meta] names as a parent that this Drive made and no longer has (deleted by its owner in Drive), as
+     * Drive refuses a file into it with 404 (round 26: a shared trip's folder deleted, made again).
+     */
+    private fun goneParent(meta: JsonObject): String? =
+        (meta["parents"] as? JsonArray)?.map { (it as JsonPrimitive).content }?.firstOrNull { p -> p.startsWith("drv") && items[p]?.takeIf { !it.trashed } == null }
 
     private fun add(meta: JsonObject, content: ByteArray, mime: String, given: String? = null): FakeDriveItem {
         val id = given ?: newId()

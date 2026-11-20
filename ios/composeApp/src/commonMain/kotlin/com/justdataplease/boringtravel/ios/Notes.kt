@@ -11,6 +11,7 @@ import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -62,6 +63,9 @@ fun NoteScreen(
     val kit = LocalMediaKit.current
     val rows = LocalMediaRows.current
     val own = entry?.authorId == null
+    // In a shared trip only the author changes an entry; the others read it, with the author's name (round 26).
+    val sharing = LocalTogether.current?.state?.collectAsState()?.value
+    val authorName = entry?.authorId?.let { id -> sharing?.trips?.firstNotNullOfOrNull { t -> t.members.firstOrNull { it.id == id }?.name } }
     val doc = remember(entry?.body) { EntryDoc.parse(entry?.body) }
     BtScreen {
         Column(Modifier.fillMaxSize()) {
@@ -75,7 +79,7 @@ fun NoteScreen(
             ) {
                 // A long press copies the place (the Android app's copyOnLongPress).
                 Eyebrow(header(e), Modifier.copyOnLongPress(e.placeName.trim(), "Place"))
-                if (!own) Text("By a friend", style = Bt.text.sub)
+                if (!own) Text("By ${authorName?.ifBlank { null } ?: "a friend"}", style = Bt.text.sub)
                 SelectionContainer {
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         if (e.title.isNotBlank()) H1(e.title)

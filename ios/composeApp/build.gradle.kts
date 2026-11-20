@@ -935,6 +935,88 @@ val communityRewrites: Map<String, List<Pair<String, String>>> = run {
 }
 
 /*
+ * Travel together (round 26), compiled as it is: a member's copy as a file (ShareFormat), its gzip JSON with every check
+ * and mend (ShareCodec), the join link (ShareLink), what this phone keeps of each shared trip (ShareState), the merge
+ * (TogetherMerge: the later edit wins, deletions travel, authors kept), the engine of a sync, a join, an add, leaving and
+ * the photos (TogetherEngine, over its own interfaces), the trips' mailboxes' rules (TripMail, TogetherMail), the send
+ * queue's rule (SendQueue), and the screens: Trips' "Join a friend's trip" (JoinTripRow), the Travel together sheet with
+ * its texts (TogetherSheet, TogetherText), the Join sheet (JoinSheet) and their one-action-at-a-time (SheetWork).
+ * Written again here: together/Together.kt (Android's Together: Room, WorkManager, Drive and the photos' copies on this
+ * app's trip store, Drive REST, PublicDrive, the send queue kept on the phone and BGAppRefreshTask), together/
+ * FirestoreTripMail.kt (Firestore's REST API in place of the SDK), ui/together/TogetherGoogle.kt (Google's steps on
+ * iPhone: one page for the account and Drive) and ios/TogetherNav.kt (what the sheets reach of AppGraph).
+ */
+val togetherFiles = listOf(
+    "together/ShareFormat.kt", "together/ShareState.kt", "together/ShareLink.kt", "together/ShareCodec.kt",
+    "together/TogetherMerge.kt", "together/TogetherEngine.kt", "together/TogetherMail.kt", "together/TripMail.kt",
+    "together/SendQueue.kt",
+    "ui/together/JoinTripRow.kt", "ui/together/SheetWork.kt", "ui/together/TogetherSheet.kt", "ui/together/JoinSheet.kt",
+)
+
+/*
+ * Travel together's lines rewritten on the way in: java.io's streams, java.util.zip's gzip, java.net's form encoding,
+ * java.security's SHA-256 and java.util.concurrent's maps by compat's names (compat/Gzip.kt, JavaIo.kt, JavaUtil.kt) and
+ * UrlCodec's, java.time's date check by the engine's, UUID by the engine's ids, "%02x" written out; in the sheets Android's
+ * Context, Intent and LocalContext as compat's, AppGraph as this app's (ios/TogetherNav.kt), Dispatchers.IO as Default and
+ * Dispatchers.Main as the sheets' own scope (the app frame's, on the main thread). The join link's pattern is said without
+ * a negated class holding \s and other characters (the shape Kotlin/Native misread with \p{…}: RegexShapesSmokeTest).
+ */
+val togetherRewrites: Map<String, List<Pair<String, String>>> = run {
+    val c = "com.justdataplease.boringtravel.compat"
+    fun to(old: String, new: String) = "import $old" to "import $new"
+    val hex = "\"%02x\".format(it)" to "(it.toInt() and 0xFF).toString(16).padStart(2, '0')"
+    val sha = to("java.security.MessageDigest", "$c.MessageDigest\nimport $c.Charsets\nimport $c.toByteArray")
+    val concurrent = to("java.util.concurrent.ConcurrentHashMap", "$c.ConcurrentHashMap")
+    val graph = to("com.justdataplease.boringtravel.AppGraph", "com.justdataplease.boringtravel.ios.TogetherGraph as AppGraph")
+    val context = to("androidx.compose.ui.platform.LocalContext", "$c.LocalContext")
+    mapOf(
+        "together/ShareLink.kt" to listOf(
+            to("java.net.URLDecoder", "com.justdataplease.boringtravel.ios.UrlCodec"),
+            "import java.net.URLEncoder" to "// URLEncoder and URLDecoder: UrlCodec's form encoding here (Java's own rules).",
+            "URLEncoder.encode(s, \"UTF-8\")" to "UrlCodec.formEncode(s)",
+            "URLDecoder.decode(s.replace(\"+\", \"%2B\"), \"UTF-8\")" to "UrlCodec.formDecode(s.replace(\"+\", \"%2B\"))",
+            """[#?]([^\s<>"']+)""" to """[#?]((?:(?![<>"'])\S)+)""",
+        ),
+        "together/ShareCodec.kt" to listOf(
+            to("com.justdataplease.boringtravel.links.LinkPlaces", "com.justdataplease.boringtravel.ios.LinkPlaces"),
+            to("java.io.ByteArrayInputStream", "$c.ByteArrayInputStream"),
+            to("java.io.ByteArrayOutputStream", "$c.ByteArrayOutputStream\nimport $c.Charsets\nimport $c.toByteArray"),
+            to("java.io.IOException", "com.justdataplease.boringtravel.io.IOException"),
+            to("java.time.LocalDate", "com.justdataplease.boringtravel.time.parseLocalDateOrNull"),
+            to("java.util.zip.GZIPInputStream", "$c.GZIPInputStream"),
+            to("java.util.zip.GZIPOutputStream", "$c.GZIPOutputStream"),
+            "runCatching { LocalDate.parse(it) }.isFailure" to "parseLocalDateOrNull(it) == null",
+        ),
+        "together/TogetherMerge.kt" to listOf(sha, hex),
+        "together/TripMail.kt" to listOf(sha, hex),
+        "together/TogetherEngine.kt" to listOf(
+            to("java.io.File", "$c.File"),
+            to("java.io.IOException", "com.justdataplease.boringtravel.io.IOException"),
+            to("java.security.MessageDigest", "$c.MessageDigest"),
+            to("java.util.UUID", "com.justdataplease.boringtravel.data.repo.newId as newRowId"),
+            "private val newId: () -> String = { UUID.randomUUID().toString() }," to "private val newId: () -> String = { newRowId() },",
+            hex,
+        ),
+        "together/TogetherMail.kt" to listOf(concurrent),
+        "together/SendQueue.kt" to listOf(concurrent),
+        // One action at a time on the sheets' scope (the app frame's, on the main thread: Android launches on Main).
+        "ui/together/SheetWork.kt" to listOf(
+            "scope.launch(Dispatchers.Main) { go(work) }" to "scope.launch { go(work) }",
+            "scope.launch(Dispatchers.Main) {" to "scope.launch {",
+        ),
+        "ui/together/TogetherSheet.kt" to listOf(
+            to("android.content.Context", "$c.Context"), to("android.content.Intent", "$c.Intent"), context, graph,
+            to("com.justdataplease.boringtravel.ui.onboarding.findActivity", "$c.findActivity"),
+            "System.currentTimeMillis()" to "com.justdataplease.boringtravel.time.nowMs()",
+            "withContext(Dispatchers.IO)" to "withContext(Dispatchers.Default)",
+            "        if (context !is android.app.Activity) chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)" to
+                "        // The share sheet comes over the app's own screen (Android adds a new task outside an Activity).",
+        ),
+        "ui/together/JoinSheet.kt" to listOf(context, graph),
+    )
+}
+
+/*
  * Whole functions cut out of a file on the way in, where they reach Android (a WebView, an Activity, Android's
  * view-model and launchers, Drive): from the first text to the end of the function ("\n}\n", a top-level declaration's
  * closing brace). This app writes them again (named in each note); the rest of the file is compiled as it is. The build
@@ -1073,7 +1155,7 @@ val sharedFiles = listOf(
     "google/DriveJson.kt",
     "google/DriveExportTooLargeException.kt",
     "backup/BackupVideos.kt",
-) + aiFiles + siteFiles + clipFiles + bookFiles + communityFiles
+) + aiFiles + siteFiles + clipFiles + bookFiles + communityFiles + togetherFiles
 
 /*
  * A few lines are rewritten on the way in, where a shared file calls Java for something Kotlin has too (iPhone has no
@@ -1330,7 +1412,7 @@ val rewrites: Map<String, List<Pair<String, String>>> = mapOf(
         "import java.time.LocalDate" to "import com.justdataplease.boringtravel.time.LocalDate\nimport com.justdataplease.boringtravel.compat.isAfter",
         ".minByOrNull { it.startDate!! }" to ".minByOrNull { it.startDate!!.toEpochDay() }",
     ),
-) + aiRewrites + siteRewrites + clipRewrites + bookRewrites + communityRewrites
+) + aiRewrites + siteRewrites + clipRewrites + bookRewrites + communityRewrites + togetherRewrites
 
 /** A rule that names a whole import line replaces only that line; any other rule replaces its text where it stands. */
 fun rewrite(line: String, rules: List<Pair<String, String>>): String = rules.fold(line) { text, (old, new) ->
@@ -1340,7 +1422,7 @@ fun rewrite(line: String, rules: List<Pair<String, String>>): String = rules.fol
 val sharedSources = tasks.register<Sync>("sharedSources") {
     into(layout.buildDirectory.dir("sharedSources"))
     // Gradle can't see a change to the rewriting rules; raise this when one changes, so the copy runs again.
-    inputs.property("rules", 33)
+    inputs.property("rules", 35)
     from(androidMain.resolve("java")) {
         sharedFiles.filterNot { it in rewrites }.forEach { include("$pkg/$it") }
     }
@@ -1679,6 +1761,34 @@ val androidCommunityTests: Map<String, List<Pair<String, String>>> = run {
     }
 }
 
+/*
+ * The Android app's own tests of Travel together (round 26), in their own packages against the files read in above and
+ * this app's together/Together.kt (its schedule's rule): whole conversations between phones over a fake Drive and
+ * mailbox (TogetherEngineTest), the merge, the file's checks and its gzip read back with Java's own GZIPInputStream
+ * (TogetherMergeTest), the link, the mailbox's rules, the schedule and the send queue, the sheets' texts. Their days are
+ * java.time's (the engine's days are java.time's on the desktop); the engine's photo files are compat's File over the
+ * test's own folders.
+ */
+val androidTogetherTests: Map<String, List<Pair<String, String>>> = run {
+    val f = "com.justdataplease.boringtravel.compat.File"
+    mapOf(
+        "together/TogetherEngineTest.kt" to listOf(
+            "            override fun file(media: Media) = File(dir, media.localPath)" to "            override fun file(media: Media) = $f(File(dir, media.localPath).path)",
+            "            override fun smallCopy(media: Media) = File(dir, media.localPath).takeIf { it.isFile }.also { smallCopies += media.id }" to
+                "            override fun smallCopy(media: Media) = File(dir, media.localPath).takeIf { it.isFile }.also { smallCopies += media.id }?.let { $f(it.path) }",
+            "override suspend fun upload(folderId: String, file: File, name: String, mime: String): String? {" to
+                "override suspend fun upload(folderId: String, file: $f, name: String, mime: String): String? {",
+            "override suspend fun download(fileId: String, target: File, maxBytes: Long) {" to
+                "override suspend fun download(fileId: String, target: $f, maxBytes: Long) {",
+        ),
+        "together/TogetherMergeTest.kt" to emptyList(),
+        "together/TogetherScheduleTest.kt" to emptyList(),
+        "together/TripMailTest.kt" to emptyList(),
+        "together/ShareLinkTest.kt" to emptyList(),
+        "ui/together/TogetherTextTest.kt" to emptyList(),
+    )
+}
+
 fun testRewrite(line: String): String = when {
     line.startsWith("package com.justdataplease.boringtravel.") ->
         "package com.justdataplease.boringtravel.ios\n\nimport com.justdataplease.boringtravel.places.*"
@@ -1808,8 +1918,8 @@ val androidReferenceSources = tasks.register<Sync>("androidReferenceSources") {
 
 val androidTestSources = tasks.register<Sync>("androidTestSources") {
     into(layout.buildDirectory.dir("androidTests"))
-    inputs.property("rules", 18)
-    (androidExportTests + androidAiTests + androidSiteTests + androidClipTests + androidBookTests + androidCommunityTests).forEach { (file, rules) ->
+    inputs.property("rules", 19)
+    (androidExportTests + androidAiTests + androidSiteTests + androidClipTests + androidBookTests + androidCommunityTests + androidTogetherTests).forEach { (file, rules) ->
         from(androidMain.parentFile.resolve("test/java/$pkg")) {
             include(file)
             filter { line: String -> rewrite(line, rules) }
@@ -1834,7 +1944,7 @@ val androidTestSources = tasks.register<Sync>("androidTestSources") {
     doLast {
         val missing = androidTests.filterNot { destinationDir.resolve("$pkg/ios/android/$it").isFile } +
             androidTestsAsTheyAre.filterNot { destinationDir.resolve("$pkg/$it").isFile } +
-            (androidExportTests + androidAiTests + androidSiteTests + androidClipTests + androidBookTests + androidCommunityTests).keys.filterNot { destinationDir.resolve("$pkg/$it").isFile }
+            (androidExportTests + androidAiTests + androidSiteTests + androidClipTests + androidBookTests + androidCommunityTests + androidTogetherTests).keys.filterNot { destinationDir.resolve("$pkg/$it").isFile }
         check(missing.isEmpty()) { "Not in the Android app's tests any more: $missing" }
     }
 }
